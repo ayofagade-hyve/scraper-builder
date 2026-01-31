@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Scraper Builder (Free)</title>
+  <title>Scraper Builder</title>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     body { margin:0; background:#0b0f14; color:#e8eef6; }
@@ -27,49 +27,47 @@
     .good { background:#16a34a22; border-color:#22c55e; }
     .primary { background:#1b4dff22; border-color:#2c63ff; }
     .ghost { background:transparent; }
-    .pill { display:inline-block; font-size:11px; padding: 4px 8px; border-radius:999px; border:1px solid #2b425f; opacity:.9; }
+    .pill { display:inline-block; font-size:11px; padding: 10px 12px; border-radius:999px; border:1px solid #2b425f; opacity:.95; }
     .muted { opacity:.78; font-size:12px; }
     .tiny { opacity:.78; font-size:11px; }
     .kbd { border:1px solid #2b425f; border-bottom-width:2px; border-radius:7px; padding: 1px 6px; font-size:11px; opacity:.9; }
-    code { background:#0a1220; border:1px solid #20304a; padding: 1px 6px; border-radius: 6px; }
     a { color:#9bb7ff; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .status { margin-top:10px; }
+    hr { border:none; border-top:1px solid #1c2a40; margin:14px 0; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
-        <h1>Scraper Builder <span class="pill">Free • GitHub Pages</span></h1>
-        <div class="sub">Non-technical flow: drag a bookmarklet → click an item + pagination → paste config → get a console script (CSV export).</div>
+        <h1>Scraper Builder <span class="pill" style="padding:4px 8px;">Free • GitHub Pages</span></h1>
+        <div class="sub">
+          Drag bookmarklet → click item + pagination → paste config → generate console script → CSV download.
+        </div>
       </div>
-      <div class="pill">No backend • No API key</div>
+      <div class="pill" style="padding:4px 8px;">No backend • No API key</div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <h2>Step 1 — Add the “Click to pick” bookmarklet</h2>
+        <h2>Step 1 — Add the bookmarklet</h2>
         <div class="muted">
-          1) Show bookmarks bar: <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">B</span> (Windows) or <span class="kbd">Cmd</span>+<span class="kbd">Shift</span>+<span class="kbd">B</span> (Mac)<br/>
-          2) Drag the link below onto your bookmarks bar.
+          Show bookmarks bar:
+          <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">B</span> (Windows) or
+          <span class="kbd">Cmd</span>+<span class="kbd">Shift</span>+<span class="kbd">B</span> (Mac)
         </div>
 
-        <label>Drag this link to your bookmarks bar</label>
-        <a id="bookmarklet" href="#" class="pill" style="display:inline-block; padding:10px 12px;">🟢 Pick selectors</a>
+        <label>Drag this onto your bookmarks bar</label>
+        <a id="bookmarklet" href="#" class="pill">🟢 Pick selectors</a>
 
-        <div class="muted" style="margin-top:12px;">
-          On the target site: click the bookmark → click the item name inside a card → then click the “Next / Load more / Page link”.<br/>
-          It will copy a JSON config to clipboard (and also show it on screen).
-        </div>
+        <div class="tiny muted status" id="pickHelp"></div>
 
-        <div class="status tiny" id="pickHelp"></div>
+        <hr/>
 
-        <hr style="border:none; border-top:1px solid #1c2a40; margin:14px 0;" />
-
-        <h2>Step 2 — Paste the config here</h2>
+        <h2>Step 2 — Paste config</h2>
         <label>Picker Output (JSON)</label>
-        <textarea id="config" placeholder='Paste the JSON you got after clicking item + pagination...'></textarea>
+        <textarea id="config" placeholder='Paste JSON here...'></textarea>
 
         <div class="btns">
           <button id="loadConfig" class="primary">Load config</button>
@@ -78,7 +76,7 @@
 
         <div class="status tiny" id="status"></div>
 
-        <hr style="border:none; border-top:1px solid #1c2a40; margin:14px 0;" />
+        <hr/>
 
         <h2>Step 3 — Generate console scraper</h2>
 
@@ -95,7 +93,7 @@
           <option value="loadMore">Load more button</option>
         </select>
 
-        <label>Pagination selector (button/link)</label>
+        <label>Pagination selector</label>
         <input id="pagSelector" placeholder='e.g. nav.pagination a[aria-current="true"] + a' />
 
         <div class="btns">
@@ -109,200 +107,33 @@
 
       <div class="card">
         <h2>Generated Script</h2>
-        <div class="muted">This script scrapes item name + item URL and downloads a CSV. It paginates by clicking Next or Load More if configured.</div>
+        <div class="muted">Scrapes Name + URL and downloads CSV.</div>
         <label>Console Script</label>
         <textarea id="out" spellcheck="false"></textarea>
-        <div class="tiny muted">Tip: test on 1–2 pages first by reducing MAX_STEPS in the script.</div>
+        <div class="tiny muted">Tip: set MAX_STEPS low first.</div>
       </div>
     </div>
   </div>
 
 <script>
-/**
- * Bookmarklet picker:
- * - user clicks an item link
- * - then clicks a pagination control
- * - we output JSON: rowSelector, itemSelector, pagMode + pagSelector
- */
+  function setStatus(msg, ok=true){
+    const s=document.getElementById("status");
+    s.textContent=msg;
+    s.style.color = ok ? "#86efac" : "#fca5a5";
+    setTimeout(()=>{ s.textContent=""; s.style.color=""; }, 2500);
+  }
 
-function makePickerCode() {
-  return `(function () {
-    if (window.__PICKER_ACTIVE__) {
-      alert("Picker already running. Press Esc to cancel.");
-      return;
-    }
-    window.__PICKER_ACTIVE__ = true;
+  function generateScript({rowSelector, itemSelector, paginationMode, paginationSelector}) {
+    if(!rowSelector || !itemSelector) return "// Provide rowSelector and itemSelector.\n";
+    const pagMode = paginationMode || "none";
+    const pagSel = paginationSelector || "";
 
-    const cssEscape = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
-    const stableClasses = (el) => [...(el?.classList || [])].filter(c => c && c.length < 40 && !/[0-9]{4,}/.test(c)).slice(0, 2);
-
-    function selectorFor(el) {
-      if (!el || el.nodeType !== 1) return null;
-      if (el.id) return "#" + cssEscape(el.id);
-      const parts = [];
-      let cur = el;
-      while (cur && cur.nodeType === 1 && cur !== document.body) {
-        let part = cur.tagName.toLowerCase();
-        const cls = stableClasses(cur);
-        if (cls.length) part += "." + cls.map(cssEscape).join(".");
-        parts.unshift(part);
-        const candidate = parts.join(" > ");
-        if (document.querySelectorAll(candidate).length === 1) return candidate;
-        cur = cur.parentElement;
-      }
-      return parts.join(" > ");
-    }
-
-    function findRepeatingRow(el) {
-      let cur = el;
-      for (let i = 0; i < 14 && cur; i++) {
-        const sel = selectorFor(cur);
-        if (!sel) break;
-        const n = document.querySelectorAll(sel).length;
-        if (n >= 2 && n <= 5000) return sel;
-        cur = cur.parentElement;
-      }
-      return null;
-    }
-
-    const overlay = document.createElement("div");
-    overlay.style.cssText = [
-      "position:fixed","inset:0","z-index:2147483647",
-      "background:rgba(0,0,0,.08)","cursor:crosshair",
-      "pointer-events:none"
-    ].join(";");
-    document.body.appendChild(overlay);
-
-    let step = 1;
-    let rowSel = null, itemSel = null, pagSel = null, pagMode = "none";
-
-    const cleanup = () => {
-      ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
-        document.removeEventListener(t, blocker, true)
-      );
-      document.removeEventListener("keydown", onKey, true);
-      document.removeEventListener("pointerup", onPick, true);
-      overlay.remove();
-      window.__PICKER_ACTIVE__ = false;
-    };
-
-    const onKey = (e) => {
-      if (e.key === "Escape") { cleanup(); alert("Picker cancelled."); }
-    };
-
-    const blocker = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      return false;
-    };
-
-    // ✅ normalize row selector if it accidentally picks an <a>
-    function normalizeRowFromElement(el, rowSelGuess){
-      // If rowSelGuess points to an <a> (very common), climb to LI/DIV container and prefer li.block-list__item if present.
-      const li = el.closest("li.block-list__item");
-      if (li) return "li.block-list__item";
-
-      const maybe = el.closest(rowSelGuess);
-      if(maybe && maybe.tagName && maybe.tagName.toLowerCase() === "a"){
-        let n = maybe.parentElement;
-        for(let i=0;i<10 && n;i++){
-          if(n.tagName && n.tagName.toLowerCase() !== "a"){
-            const sel = selectorFor(n);
-            if(sel){
-              const count = document.querySelectorAll(sel).length;
-              if(count >= 2 && count <= 5000) return sel;
-            }
-          }
-          n = n.parentElement;
-        }
-      }
-      return rowSelGuess;
-    }
-
-    const onPick = async (e) => {
-      blocker(e);
-
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      if (!el) return;
-
-      const prev = el.style.outline;
-      el.style.outline = "3px solid #22c55e";
-      setTimeout(() => { el.style.outline = prev; }, 600);
-
-      if (step === 1) {
-        let guess = findRepeatingRow(el);
-        rowSel = normalizeRowFromElement(el, guess);
-
-        // ✅ prefer a title-like link within the row if possible
-        const rowEl = rowSel ? el.closest(rowSel) : null;
-        const preferred =
-          rowEl?.querySelector("strong.block-list__title a[href]") ||
-          rowEl?.querySelector("strong a[href]") ||
-          rowEl?.querySelector("[class*='title'] a[href]") ||
-          el.closest("a[href]") ||
-          el;
-
-        itemSel = "strong.block-list__title a"; // strong default for this event platform
-
-        step = 2;
-        alert("✅ Item selected. Now click pagination (Next / Load more / page segment). Press Esc if none.");
-        return;
-      }
-
-      const pagEl = el.closest("a[href], button, [role='button']") || el;
-      const text = (pagEl.textContent || "").trim().toLowerCase();
-      pagMode = (text.includes("load") || text.includes("more")) ? "loadMore" : "nextButton";
-
-      // segmented pagination best-practice
-      if (document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item')) {
-        pagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
-        pagMode = "nextButton";
-      } else {
-        pagSel = selectorFor(pagEl);
-      }
-
-      const cfg = { rowSelector: rowSel, itemSelector: itemSel, pagination: { mode: pagMode, selector: pagSel } };
-      const json = JSON.stringify(cfg, null, 2);
-
-      cleanup();
-
-      try {
-        await navigator.clipboard.writeText(json);
-        alert("✅ Config copied to clipboard!\\n\\nPaste into your builder:\\n\\n" + json);
-      } catch {
-        prompt("Copy this JSON config:", json);
-      }
-    };
-
-    ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
-      document.addEventListener(t, blocker, { capture: true, passive: false })
-    );
-    document.addEventListener("pointerup", onPick, { capture: true, passive: false });
-    document.addEventListener("keydown", onKey, true);
-
-    alert("🟢 Picker ON. Click an item name/link first. (Esc cancels)");
-  })();`;
-}
-
-function setStatus(msg, ok=true){
-  const s=document.getElementById("status");
-  s.textContent=msg;
-  s.style.color = ok ? "#86efac" : "#fca5a5";
-  setTimeout(()=>{ s.textContent=""; s.style.color=""; }, 2500);
-}
-
-function generateScript({rowSelector, itemSelector, paginationMode, paginationSelector}) {
-  if(!rowSelector || !itemSelector) return "// Provide rowSelector and itemSelector.\n";
-  const pagMode = paginationMode || "none";
-  const pagSel = paginationSelector || "";
-
-  return `(async () => {
+    return `(async () => {
   const ROW_SEL = ${JSON.stringify(rowSelector)};
   const ITEM_SEL = ${JSON.stringify(itemSelector)};
   const PAGINATION_MODE = ${JSON.stringify(pagMode)}; // none | nextButton | loadMore
   const PAGINATION_SEL = ${JSON.stringify(pagSel)};
-  const MAX_STEPS = 10; // change if needed
+  const MAX_STEPS = 10;
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const rand = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
@@ -315,13 +146,13 @@ function generateScript({rowSelector, itemSelector, paginationMode, paginationSe
   function scrapePage() {
     const rows = [...document.querySelectorAll(ROW_SEL)];
     const out = [];
-for (const row of rows) {
-  const a = (row.matches && row.matches(ITEM_SEL)) ? row : row.querySelector(ITEM_SEL);
-  const name = (a?.textContent || "").trim().replace(/\s+/g, " ") || null;
-  const url = absUrl(a?.getAttribute("href"));
-  if (name && url) out.push({ name, url });
-}
-
+    for (const row of rows) {
+      // ✅ handles when row is the <a> itself OR a container
+      const a = (row.matches && row.matches(ITEM_SEL)) ? row : row.querySelector(ITEM_SEL);
+      const name = (a?.textContent || "").trim().replace(/\\s+/g, " ") || null;
+      const url = absUrl(a?.getAttribute("href"));
+      if (name && url) out.push({ name, url });
+    }
     return out;
   }
 
@@ -361,10 +192,8 @@ for (const row of rows) {
     if(PAGINATION_MODE==="nextButton"){
       const ok = await clickNext();
       if(!ok) break;
-    } else if(PAGINATION_MODE==="none" || PAGINATION_MODE==="loadMore"){
-      // for loadMore we already expanded; stop after one scrape unless it keeps changing
-      if(PAGINATION_MODE==="none") break;
-      if(step >= MAX_STEPS) break;
+    } else {
+      break;
     }
 
     await sleep(rand(700, 1300));
@@ -389,67 +218,77 @@ for (const row of rows) {
 
   console.log(\`✅ Exported \${map.size} items\`);
 })();`;
-}
-
-function updateOutput() {
-  const rowSelector = document.getElementById("rowSelector").value.trim();
-  const itemSelector = document.getElementById("itemSelector").value.trim();
-  const pagMode = document.getElementById("pagMode").value;
-  const pagSelector = document.getElementById("pagSelector").value.trim();
-
-  document.getElementById("out").value = generateScript({
-    rowSelector,
-    itemSelector,
-    paginationMode: pagMode,
-    paginationSelector: pagSelector
-  });
-}
-
-function setBookmarkletLink(){
-  const raw = makePickerCode();
-  const a = document.getElementById("bookmarklet");
-  a.href = "javascript:" + raw;   // ✅ do not encode
-  a.addEventListener("click", (e) => e.preventDefault()); // ✅ prevent opening your site when clicked
-  document.getElementById("pickHelp").textContent =
-    "Drag the ‘Pick selectors’ pill to your bookmarks bar. Then use it on any site.";
-}
-
-
-// wire UI
-document.getElementById("loadConfig").addEventListener("click", () => {
-  const txt = document.getElementById("config").value.trim();
-  if(!txt) return setStatus("Paste the JSON config first.", false);
-  try {
-    const cfg = JSON.parse(txt);
-    document.getElementById("rowSelector").value = cfg.rowSelector || "";
-    document.getElementById("itemSelector").value = cfg.itemSelector || "";
-    document.getElementById("pagMode").value = cfg.pagination?.mode || "none";
-    document.getElementById("pagSelector").value = cfg.pagination?.selector || "";
-    updateOutput();
-    setStatus("Loaded config ✅", true);
-  } catch {
-    setStatus("That doesn’t look like valid JSON.", false);
   }
-});
 
-document.getElementById("clearConfig").addEventListener("click", () => {
-  document.getElementById("config").value = "";
-  setStatus("Cleared.");
-});
+  function updateOutput() {
+    const rowSelector = document.getElementById("rowSelector").value.trim();
+    const itemSelector = document.getElementById("itemSelector").value.trim();
+    const pagMode = document.getElementById("pagMode").value;
+    const pagSelector = document.getElementById("pagSelector").value.trim();
 
-["rowSelector","itemSelector","pagMode","pagSelector"].forEach(id=>{
-  document.getElementById(id).addEventListener("input", updateOutput);
-  document.getElementById(id).addEventListener("change", updateOutput);
-});
+    document.getElementById("out").value = generateScript({
+      rowSelector,
+      itemSelector,
+      paginationMode: pagMode,
+      paginationSelector: pagSelector
+    });
+  }
 
-document.getElementById("copyScript").addEventListener("click", async () => {
-  const text = document.getElementById("out").value;
-  try { await navigator.clipboard.writeText(text); setStatus("Copied script ✅"); }
-  catch { setStatus("Clipboard blocked—copy manually.", false); }
-});
+  // ✅ The bookmarklet is SHORT and only loads picker.js from this site
+  function setBookmarkletLink(){
+    const pickerUrl = new URL("picker.js", window.location.href).toString();
 
-setBookmarkletLink();
-updateOutput();
+    const js =
+`(()=>{try{
+  const u=${JSON.stringify(pickerUrl)}+"?v="+Date.now();
+  const s=document.createElement("script");
+  s.src=u; s.async=true;
+  s.onload=()=>console.log("[Picker] loaded",u);
+  s.onerror=()=>alert("Picker failed to load: "+u);
+  document.documentElement.appendChild(s);
+}catch(e){alert("Picker error: "+e.message);}})();`;
+
+    const a = document.getElementById("bookmarklet");
+    a.href = "javascript:" + js;     // ✅ no encoding
+    a.addEventListener("click", (e) => e.preventDefault()); // don't open anything
+    document.getElementById("pickHelp").textContent =
+      "Drag ‘Pick selectors’ to bookmarks. On the target site, click it → click item → click pagination.";
+  }
+
+  document.getElementById("loadConfig").addEventListener("click", () => {
+    const txt = document.getElementById("config").value.trim();
+    if(!txt) return setStatus("Paste the JSON config first.", false);
+    try {
+      const cfg = JSON.parse(txt);
+      document.getElementById("rowSelector").value = cfg.rowSelector || "";
+      document.getElementById("itemSelector").value = cfg.itemSelector || "";
+      document.getElementById("pagMode").value = cfg.pagination?.mode || "none";
+      document.getElementById("pagSelector").value = cfg.pagination?.selector || "";
+      updateOutput();
+      setStatus("Loaded config ✅", true);
+    } catch {
+      setStatus("That doesn’t look like valid JSON.", false);
+    }
+  });
+
+  document.getElementById("clearConfig").addEventListener("click", () => {
+    document.getElementById("config").value = "";
+    setStatus("Cleared.");
+  });
+
+  ["rowSelector","itemSelector","pagMode","pagSelector"].forEach(id=>{
+    document.getElementById(id).addEventListener("input", updateOutput);
+    document.getElementById(id).addEventListener("change", updateOutput);
+  });
+
+  document.getElementById("copyScript").addEventListener("click", async () => {
+    const text = document.getElementById("out").value;
+    try { await navigator.clipboard.writeText(text); setStatus("Copied script ✅"); }
+    catch { setStatus("Clipboard blocked—copy manually.", false); }
+  });
+
+  setBookmarkletLink();
+  updateOutput();
 </script>
 </body>
 </html>
