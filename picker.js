@@ -1,4 +1,3 @@
-// picker.js (FULL FILE)
 (() => {
   if (window.__SCRAPER_PICKER_ACTIVE__) {
     alert("Picker already running. Press Esc to cancel.");
@@ -79,13 +78,6 @@
   let itemSelector = null;
   let sectionName = null;
 
-  const onKey = (e) => {
-    if (e.key === "Escape") {
-      cleanup();
-      alert("Picker cancelled.");
-    }
-  };
-
   async function copyToClipboard(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
   }
@@ -103,6 +95,38 @@
     }
     return "Exhibitors";
   }
+
+  async function outputConfig(paginationMode, paginationSelector) {
+    const cfg = {
+      sectionName,
+      rowSelector,
+      itemSelector,
+      pagination: {
+        mode: paginationMode,
+        selector: paginationSelector || ""
+      }
+    };
+
+    const json = JSON.stringify(cfg, null, 2);
+    cleanup();
+
+    const ok = await copyToClipboard(json);
+    if (ok) alert("✅ Config copied to clipboard!\n\nPaste into your Scraper Builder:\n\n" + json);
+    else prompt("Copy this JSON config:", json);
+  }
+
+  const onKey = async (e) => {
+    if (e.key !== "Escape") return;
+
+    if (step === 1) {
+      cleanup();
+      alert("Picker cancelled.");
+      return;
+    }
+
+    // ✅ Step 2: Esc means “no pagination”
+    await outputConfig("none", "");
+  };
 
   const onPick = async (e) => {
     blocker(e);
@@ -128,33 +152,21 @@
       }
 
       step = 2;
-      alert("✅ Item selected.\nNow click ANY pagination segment/link.\n(Esc cancels)");
+      alert("✅ Item selected.\nNow click ANY pagination segment/link.\nIf there is NO pagination, press Esc.");
       return;
     }
 
-    const cfg = {
-      sectionName,
-      rowSelector,
-      itemSelector,
-      pagination: {
-        mode: "indexPages",
-        selector: `a[href*="/${sectionName}/Index/"]`
-      }
-    };
-
-    const json = JSON.stringify(cfg, null, 2);
-    cleanup();
-
-    const ok = await copyToClipboard(json);
-    if (ok) alert("✅ Config copied to clipboard!\n\nPaste into your Scraper Builder:\n\n" + json);
-    else prompt("Copy this JSON config:", json);
+    // Step 2: we don’t actually need the clicked element —
+    // we want the robust index selector for this section.
+    await outputConfig("indexPages", `a[href*="/${sectionName}/Index/"]`);
   };
 
+  // Block navigation while picking
   ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
     document.addEventListener(t, blocker, { capture: true, passive: false })
   );
   document.addEventListener("pointerup", onPick, { capture: true, passive: false });
   document.addEventListener("keydown", onKey, true);
 
-  alert("🟢 Picker ON.\nClicks will NOT navigate.\nClick an item name/link first.\n(Esc cancels)");
+  alert("🟢 Picker ON.\nClicks will NOT navigate.\nClick an item name/link first.\n(Esc cancels / or skips pagination at step 2)");
 })();

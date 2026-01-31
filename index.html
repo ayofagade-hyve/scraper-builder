@@ -1,4 +1,3 @@
-<!-- index.html (FULL FILE) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -28,7 +27,18 @@
     .good { background:#16a34a22; border-color:#22c55e; }
     .primary { background:#1b4dff22; border-color:#2c63ff; }
     .ghost { background:transparent; }
-    .pill { display:inline-block; font-size:11px; padding: 4px 8px; border-radius:999px; border:1px solid #2b425f; opacity:.95; }
+    .pill {
+      display:inline-block;
+      font-size:12px;
+      padding:10px 12px;
+      border-radius:999px;
+      border:1px solid #2b425f;
+      background:#0f1726;
+      color:#e8eef6;
+      text-decoration:none;
+      user-select:none;
+    }
+    .pill:hover { border-color:#3b5f86; }
     .muted { opacity:.78; font-size:12px; }
     .tiny { opacity:.78; font-size:11px; }
     hr { border:none; border-top:1px solid #1c2a40; margin:14px 0; }
@@ -39,37 +49,37 @@
   <div class="wrap">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
-        <h1>Scraper Builder <span class="pill">Free • GitHub Pages</span></h1>
+        <h1>Scraper Builder <span class="pill" style="padding:4px 8px; font-size:11px;">Free • GitHub Pages</span></h1>
         <div class="sub">
-          Create bookmarklet → click item + pagination → paste config → get a console script (CSV).
+          Non-technical flow: add picker → click item → (optional) click pagination → paste config → run console script → CSV.
         </div>
       </div>
-      <div class="pill">No backend • No API key</div>
+      <div class="pill" style="padding:4px 8px; font-size:11px;">No backend • No API key</div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <h2>Step 1 — Create the bookmarklet (copy/paste)</h2>
+        <h2>Step 1 — Add “Pick selectors”</h2>
         <div class="muted">
-          1) Open Chrome <b>Bookmark Manager</b><br/>
-          2) Add new bookmark named <b>Pick selectors</b><br/>
-          3) Paste the code below into the bookmark <b>URL</b> field
+          Option A (pretty): drag this pill to your bookmarks bar (if your browser allows it).<br/>
+          Option B (always works): click the pill to copy, then paste into a bookmark URL.
         </div>
 
-        <label>Bookmarklet URL (copy this)</label>
-        <textarea id="bookmarkletCode" style="min-height:120px;"></textarea>
-
-        <div class="btns">
-          <button id="copyBookmarklet" class="good">Copy bookmarklet</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px;">
+          <a id="bookmarkletPretty" class="pill" href="#">🟢 Pick selectors</a>
+          <button id="copyBookmarklet" class="good" style="width:auto;">Copy</button>
         </div>
 
         <div class="tiny muted" id="pickHelp" style="margin-top:8px;"></div>
+
+        <label style="margin-top:12px;">Bookmarklet URL (manual copy/paste fallback)</label>
+        <textarea id="bookmarkletCode" style="min-height:120px;"></textarea>
 
         <hr/>
 
         <h2>Step 2 — Paste picker output</h2>
         <label>Picker Output (JSON)</label>
-        <textarea id="config" placeholder='Paste the JSON you got after clicking item + pagination...'></textarea>
+        <textarea id="config" placeholder='Paste the JSON you got after picking item + pagination (or Esc for no pagination)...'></textarea>
 
         <div class="btns">
           <button id="loadConfig" class="primary">Load config</button>
@@ -108,7 +118,7 @@
         </div>
 
         <div class="muted" style="margin-top:10px;">
-          Run the generated script on the target page: DevTools → Console → paste → Enter.
+          Run on the target page: DevTools → Console → paste → Enter.
         </div>
       </div>
 
@@ -121,7 +131,7 @@
         <textarea id="out" spellcheck="false" style="min-height:560px;"></textarea>
 
         <div class="tiny muted" style="margin-top:10px;">
-          Good defaults for the event platform you’re using:<br/>
+          Good defaults for that event platform:<br/>
           <code>Row</code> = <code>li.block-list__item</code><br/>
           <code>Item</code> = <code>strong.block-list__title a</code><br/>
           <code>Pages</code> = <code>a[href*="/Exhibitors/Index/"]</code> (or Speakers/Sponsors)
@@ -195,7 +205,7 @@
 
   const map = new Map();
 
-  // ✅ Index Pages mode (works for full-page navigation pagination)
+  // ✅ Index Pages mode (best for full-page navigation pagination)
   if (MODE === "indexPages") {
     const baseUrl = location.origin;
 
@@ -350,18 +360,29 @@
   function setBookmarkletCode(){
     const pickerUrl = new URL("picker.js", window.location.href).toString();
 
-    // ✅ short loader bookmarklet (not ugly)
+    // short + clean loader bookmarklet
     const code =
 `javascript:(()=>{var s=document.createElement('script');s.src=${JSON.stringify(pickerUrl)}+'?v='+Date.now();document.documentElement.appendChild(s);})();`;
 
+    // Put into textarea
     document.getElementById("bookmarkletCode").value = code;
-    document.getElementById("pickHelp").textContent =
-      "On the target site: click the bookmarklet → click an item → click any pagination segment. Esc cancels.";
 
-    document.getElementById("copyBookmarklet").onclick = async () => {
+    // Make the pill draggable (bookmarklet href)
+    const pretty = document.getElementById("bookmarkletPretty");
+    pretty.href = code;
+
+    // Clicking the pill copies instead of navigating
+    const copyFn = async (e) => {
+      if (e) e.preventDefault();
       try { await navigator.clipboard.writeText(code); setStatus("Copied bookmarklet ✅"); }
       catch { setStatus("Clipboard blocked — copy manually.", false); }
     };
+
+    pretty.addEventListener("click", copyFn);
+    document.getElementById("copyBookmarklet").onclick = copyFn;
+
+    document.getElementById("pickHelp").textContent =
+      "On the target site: click the bookmarklet → click an item. If there’s NO pagination, press Esc at step 2.";
   }
 
   // UI wiring
@@ -381,14 +402,10 @@
       // Helpful defaults
       if(!document.getElementById("rowSelector").value) document.getElementById("rowSelector").value = "li.block-list__item";
       if(!document.getElementById("itemSelector").value) document.getElementById("itemSelector").value = "strong.block-list__title a";
-      if(!document.getElementById("pagSelector").value && document.getElementById("sectionName").value) {
-        const s = document.getElementById("sectionName").value.trim();
-        document.getElementById("pagSelector").value = `a[href*="/${s}/Index/"]`;
-      }
 
       updateOutput();
       setStatus("Loaded config ✅", true);
-    } catch (e) {
+    } catch {
       setStatus("That doesn’t look like valid JSON.", false);
     }
   });
