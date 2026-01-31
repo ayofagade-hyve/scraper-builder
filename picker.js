@@ -36,7 +36,6 @@
     let cur = el;
     for (let i = 0; i < 16 && cur; i++) {
       const tag = cur.tagName?.toLowerCase?.() || "";
-      // avoid choosing tiny inline nodes as "rows"
       if (!["a","strong","span","em","b","i"].includes(tag)) {
         const sel = selectorFor(cur);
         if (sel) {
@@ -75,7 +74,7 @@
   document.body.appendChild(overlay);
 
   let step = 1;
-  let rowSel = null, itemSel = null, pagSel = null, pagMode = "none";
+  let rowSel = null, itemSel = null, pagSel = null, pagMode = "fetchPages";
 
   const onKey = (e) => {
     if (e.key === "Escape") {
@@ -94,56 +93,56 @@
     const el = document.elementFromPoint(e.clientX, e.clientY);
     if (!el) return;
 
-    // highlight click
     const prev = el.style.outline;
     el.style.outline = "3px solid #22c55e";
     setTimeout(() => { el.style.outline = prev; }, 600);
 
     if (step === 1) {
-      // Prefer known repeating container if present
+      // Prefer known container if present
       const li = el.closest("li.block-list__item");
       rowSel = li ? "li.block-list__item" : findRepeatingRow(el);
 
-      // Prefer a title link pattern inside the row when present
+      // Prefer title link if present (RDMobile style)
       const rowEl = rowSel ? el.closest(rowSel) : null;
-      const bestLink =
-        rowEl?.querySelector("strong.block-list__title a[href]") ||
-        rowEl?.querySelector("h1 a[href], h2 a[href], h3 a[href], h4 a[href]") ||
-        rowEl?.querySelector("[class*='title'] a[href]") ||
-        el.closest("a[href]");
-
-      // If we detected the RDMobile-like title, set it explicitly
       if (rowEl?.querySelector("strong.block-list__title a[href]")) {
         itemSel = "strong.block-list__title a";
-      } else if (bestLink) {
-        const cls = stableClasses(bestLink);
-        itemSel = cls.length ? ("a." + cls.map(cssEscape).join(".")) : "a[href]";
       } else {
-        itemSel = "a[href]";
+        const bestLink =
+          rowEl?.querySelector("h1 a[href], h2 a[href], h3 a[href], h4 a[href]") ||
+          rowEl?.querySelector("[class*='title'] a[href]") ||
+          el.closest("a[href]");
+        if (bestLink) {
+          const cls = stableClasses(bestLink);
+          itemSel = cls.length ? ("a." + cls.map(cssEscape).join(".")) : "a[href]";
+        } else {
+          itemSel = "a[href]";
+        }
       }
 
       step = 2;
-      alert("✅ Item selected.\nNow click pagination (Next / Load more / page segment).\n(Esc if none)");
+      alert("✅ Item selected.\nNow click a pagination link/segment.\n(Esc if none)");
       return;
     }
 
-    // step 2 pagination
-    const pagEl = el.closest("a[href], button, [role='button']") || el;
-    const text = (pagEl.textContent || "").trim().toLowerCase();
-    pagMode = (text.includes("load") || text.includes("more")) ? "loadMore" : "nextButton";
-
-    // segmented pagination (best selector)
-    if (document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item')) {
-      pagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
-      pagMode = "nextButton";
+    // Pagination: default to fetchPages mode.
+    // Try to pick a selector that finds ALL page links.
+    // If the site has /Exhibitors/Index/, this is the best pattern.
+    const anyIndex = document.querySelector('a[href*="/Exhibitors/Index/"],a[href*="/Speakers/Index/"],a[href*="/Sponsors/Index/"]');
+    if (anyIndex) {
+      const href = anyIndex.getAttribute("href") || "";
+      if (href.includes("/Exhibitors/Index/")) pagSel = 'a[href*="/Exhibitors/Index/"]';
+      else if (href.includes("/Speakers/Index/")) pagSel = 'a[href*="/Speakers/Index/"]';
+      else if (href.includes("/Sponsors/Index/")) pagSel = 'a[href*="/Sponsors/Index/"]';
+      else pagSel = 'nav.pagination a.pagination__item[href]';
     } else {
-      pagSel = selectorFor(pagEl);
+      // fallback: nav pagination links
+      pagSel = 'nav.pagination a.pagination__item[href]';
     }
 
     const cfg = {
       rowSelector: rowSel,
       itemSelector: itemSel,
-      pagination: { mode: pagMode, selector: pagSel }
+      pagination: { mode: "fetchPages", selector: pagSel }
     };
 
     const json = JSON.stringify(cfg, null, 2);
@@ -154,7 +153,6 @@
     else prompt("Copy this JSON config:", json);
   };
 
-  // Install hard blockers so clicks never navigate while picking
   ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
     document.addEventListener(t, blocker, { capture: true, passive: false })
   );

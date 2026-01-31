@@ -60,7 +60,6 @@
 
         <label>Drag this onto your bookmarks bar</label>
         <a id="bookmarklet" href="#" class="pill">🟢 Pick selectors</a>
-
         <div class="tiny muted status" id="pickHelp"></div>
 
         <hr/>
@@ -88,15 +87,14 @@
 
         <label>Pagination mode</label>
         <select id="pagMode">
-  <option value="none">None (single page)</option>
-  <option value="fetchPages">Fetch page links (recommended)</option>
-  <option value="nextButton">Click next (AJAX only)</option>
-  <option value="loadMore">Load more button</option>
-</select>
+          <option value="none">None (single page)</option>
+          <option value="fetchPages">Fetch page links (recommended)</option>
+          <option value="nextButton">Click next (AJAX only)</option>
+          <option value="loadMore">Load more button</option>
+        </select>
 
         <label>Pagination selector</label>
-        <input id="pagSelector" placeholder='FetchPages: nav.pagination a.pagination__item[href]  |  Next: nav.pagination a[aria-current="true"] + a' />
-
+        <input id="pagSelector" placeholder='FetchPages: a[href*="/Exhibitors/Index/"]  OR  nav.pagination a.pagination__item[href]' />
 
         <div class="btns">
           <button id="copyScript" class="good">Copy script</button>
@@ -112,7 +110,10 @@
         <div class="muted">Scrapes Name + URL and downloads CSV.</div>
         <label>Console Script</label>
         <textarea id="out" spellcheck="false"></textarea>
-        <div class="tiny muted">Tip: set MAX_STEPS low first.</div>
+        <div class="tiny muted">
+          Tip: If you only see 2 pagination pages, set Pagination selector to <code>a[href*="/Exhibitors/Index/"]</code>
+          (or Speakers/Sponsors).
+        </div>
       </div>
     </div>
   </div>
@@ -126,16 +127,16 @@
   }
 
   function generateScript({rowSelector, itemSelector, paginationMode, paginationSelector}) {
-  if(!rowSelector || !itemSelector) return "// Provide rowSelector and itemSelector.\n";
-  const mode = paginationMode || "none";
-  const pagSel = paginationSelector || "";
+    if(!rowSelector || !itemSelector) return "// Provide rowSelector and itemSelector.\n";
+    const mode = paginationMode || "none";
+    const pagSel = paginationSelector || "";
 
-  return `(async () => {
+    return `(async () => {
   const ROW_SEL = ${JSON.stringify(rowSelector)};
   const ITEM_SEL = ${JSON.stringify(itemSelector)};
   const MODE = ${JSON.stringify(mode)}; // none | fetchPages | nextButton | loadMore
   const PAGINATION_SEL = ${JSON.stringify(pagSel)};
-  const MAX_STEPS = 10; // used for nextButton only
+  const MAX_STEPS = 10; // nextButton only
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const rand = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
@@ -149,6 +150,7 @@
     const rows = [...doc.querySelectorAll(ROW_SEL)];
     const out = [];
     for (const row of rows) {
+      // ✅ handles when row is the <a> itself OR a container
       const a = (row.matches && row.matches(ITEM_SEL)) ? row : row.querySelector(ITEM_SEL);
       const name = (a?.textContent || "").trim().replace(/\\s+/g, " ") || null;
       const url = absUrl(a?.getAttribute("href"));
@@ -178,55 +180,79 @@
 
   const map = new Map();
 
-if (MODE === "fetchPages") {
-  const baseUrl = location.origin;
+  if (MODE === "fetchPages") {
+    const baseUrl = location.origin;
 
-  // Start with links on the current page
-  const queue = [];
-  const seen = new Set();
+    // ✅ CRAWL pages: pagination UI may only show 2 links at a time
+    const queue = [];
+    const seen = new Set();
 
-  function addUrl(u){
-    if (!u) return;
-    // Normalize: remove hash so duplicates don't happen
-    const clean = u.split("#")[0];
-    if (!seen.has(clean)) {
-      seen.add(clean);
-      queue.push(clean);
+    function addUrl(u){
+      if (!u) return;
+      const clean = u.split("#")[0];
+      if (!seen.has(clean)) {
+        seen.add(clean);
+        queue.push(clean);
+      }
     }
-  }
 
-  // seed with current page + any page links we can see
-  addUrl(location.href);
-  [...document.querySelectorAll(PAGINATION_SEL)].forEach(a => {
-    const href = a.getAttribute("href");
-    addUrl(new URL(href, baseUrl).href);
-  });
-
-  console.log("Seed pages:", queue.length);
-
-  // Crawl: each fetched page may reveal more pagination links
-  while (queue.length) {
-    const url = queue.shift();
-    console.log("Fetching:", url);
-
-    const res = await fetch(url, { credentials: "include" });
-    const html = await res.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-
-    // scrape items from this page
-    const items = scrapeFromDoc(doc);
-    for (const it of items) map.set(it.url, it.name);
-
-    // discover more pagination links from this page
-    [...doc.querySelectorAll(PAGINATION_SEL)].forEach(a => {
+    // Seed with current page + any links matching PAGINATION_SEL
+    addUrl(location.href);
+    [...document.querySelectorAll(PAGINATION_SEL)].forEach(a => {
       const href = a.getAttribute("href");
-      if (!href) return;
+      if(!href) return;
       addUrl(new URL(href, baseUrl).href);
     });
-  }
 
-  console.log("Total pages crawled:", seen.size);
-}
+    console.log("Seed pages:", queue.length);
+
+    while (queue.length) {
+      const url = queue.shift();
+      console.log("Fetching:", url);
+
+      const res = await fetch(url, { credentials: "include" });
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+
+      // scrape this page
+      const items = scrapeFromDoc(doc);
+      for(const it of items) map.set(it.url, it.name);
+
+      // discover more page links on this page
+      [...doc.querySelectorAll(PAGINATION_SEL)].forEach(a => {
+        const href = a.getAttribute("href");
+        if(!href) return;
+        addUrl(new URL(href, baseUrl).href);
+      });
+    }
+
+    console.log("Total pages crawled:", seen.size);
+
+  } else {
+    // ✅ In-page scraping only works if the page does NOT fully navigate away
+    let lastSize = 0;
+
+    for (let step=1; step<=MAX_STEPS; step++){
+      if(MODE==="loadMore") await clickLoadMore();
+
+      const items = scrapeFromDoc(document);
+      for(const it of items) map.set(it.url, it.name);
+
+      console.log(\`Step \${step} — page items: \${items.length} — total unique: \${map.size}\`);
+
+      if(map.size === lastSize) break;
+      lastSize = map.size;
+
+      if(MODE==="nextButton"){
+        const ok = await clickNext();
+        if(!ok) break;
+      } else {
+        break;
+      }
+
+      await sleep(rand(700, 1300));
+    }
+  }
 
   const rows = [
     ["Name","URL"],
@@ -247,17 +273,54 @@ if (MODE === "fetchPages") {
 
   console.log(\`✅ Exported \${map.size} items\`);
 })();`;
-}
+  }
+
+  function updateOutput() {
+    const rowSelector = document.getElementById("rowSelector").value.trim();
+    const itemSelector = document.getElementById("itemSelector").value.trim();
+    const pagMode = document.getElementById("pagMode").value;
+    const pagSelector = document.getElementById("pagSelector").value.trim();
+
+    document.getElementById("out").value = generateScript({
+      rowSelector,
+      itemSelector,
+      paginationMode: pagMode,
+      paginationSelector: pagSelector
+    });
+  }
+
+  // ✅ short bookmarklet that loads picker.js from this same GitHub Pages site
+  function setBookmarkletLink(){
+    const pickerUrl = new URL("picker.js", window.location.href).toString();
+
+    const js =
+`(()=>{try{
+  const u=${JSON.stringify(pickerUrl)}+"?v="+Date.now();
+  const s=document.createElement("script");
+  s.src=u; s.async=true;
+  s.onload=()=>console.log("[Picker] loaded",u);
+  s.onerror=()=>alert("Picker failed to load: "+u);
+  document.documentElement.appendChild(s);
+}catch(e){alert("Picker error: "+e.message);}})();`;
+
+    const a = document.getElementById("bookmarklet");
+    a.href = "javascript:" + js;
+    a.addEventListener("click", (e) => e.preventDefault());
+    document.getElementById("pickHelp").textContent =
+      "Drag this to bookmarks. On the target site: click it → click item → click pagination.";
+  }
 
   document.getElementById("loadConfig").addEventListener("click", () => {
     const txt = document.getElementById("config").value.trim();
     if(!txt) return setStatus("Paste the JSON config first.", false);
     try {
       const cfg = JSON.parse(txt);
+
       document.getElementById("rowSelector").value = cfg.rowSelector || "";
       document.getElementById("itemSelector").value = cfg.itemSelector || "";
       document.getElementById("pagMode").value = cfg.pagination?.mode || "none";
       document.getElementById("pagSelector").value = cfg.pagination?.selector || "";
+
       updateOutput();
       setStatus("Loaded config ✅", true);
     } catch {
