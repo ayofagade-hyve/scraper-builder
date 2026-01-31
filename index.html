@@ -126,7 +126,7 @@
  */
 function makePickerCode() {
   return `(function(){
-  const cssEscape = (s)=> (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,"\\\\$&");
+  const cssEscape=(s)=> (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,"\\\\$&");
   function stableClasses(el){
     const cls=[...el.classList||[]].filter(c=>c && c.length<40 && !/[0-9]{4,}/.test(c));
     return cls.slice(0,2);
@@ -139,14 +139,7 @@ function makePickerCode() {
     while(cur && cur.nodeType===1 && cur!==document.body){
       let part=cur.tagName.toLowerCase();
       const cls=stableClasses(cur);
-      if(cls.length) part += "."+cls.map(cssEscape).join(".");
-      // fallback to nth-of-type if needed
-      if(!cls.length && cur.parentElement){
-        const sib=[...cur.parentElement.children].filter(x=>x.tagName===cur.tagName);
-        if(sib.length>1){
-          part += ":nth-of-type("+(sib.indexOf(cur)+1)+")";
-        }
-      }
+      if(cls.length) part+="."+cls.map(cssEscape).join(".");
       parts.unshift(part);
       const candidate=parts.join(" > ");
       if(document.querySelectorAll(candidate).length===1) return candidate;
@@ -156,7 +149,7 @@ function makePickerCode() {
   }
   function findRepeatingRow(el){
     let cur=el;
-    for(let i=0;i<8 && cur;i++){
+    for(let i=0;i<10 && cur;i++){
       const sel=selectorFor(cur);
       if(!sel) break;
       const n=document.querySelectorAll(sel).length;
@@ -165,98 +158,81 @@ function makePickerCode() {
     }
     return null;
   }
-  function makeRelativeItemSelector(rowSel, clickedEl){
-    // Try to produce a short selector relative to the row
-    // Prefer an anchor if possible
-    const a = clickedEl.closest("a[href]") || clickedEl;
-    const tag = a.tagName.toLowerCase();
-    const cls = stableClasses(a);
-    if(cls.length) return tag+"."+cls.map(cssEscape).join(".");
-    // fallback: try common patterns
-    return "a[href]";
-  }
 
-  const state = { step: 1, item: null, rowSel: null, itemSel: null, pagSel: null, pagMode: "none" };
-
+  // ✅ overlay does NOT capture clicks
   const overlay=document.createElement("div");
-  overlay.style.cssText="position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.08);cursor:crosshair;";
+  overlay.style.cssText=[
+    "position:fixed","inset:0","z-index:2147483647",
+    "background:rgba(0,0,0,.08)","cursor:crosshair",
+    "pointer-events:none"
+  ].join(";");
   document.body.appendChild(overlay);
 
-  let last=null;
-  function highlight(el){
-    if(last) last.style.outline="";
-    last=el;
-    if(el) el.style.outline="3px solid #22c55e";
-  }
-  function onMove(e){
-    const el=document.elementFromPoint(e.clientX,e.clientY);
-    if(el && el!==overlay) highlight(el);
-  }
+  let step=1, rowSel=null, itemSel=null;
+
   function cleanup(){
-    overlay.removeEventListener("mousemove",onMove,true);
-    overlay.removeEventListener("click",onClick,true);
-    document.removeEventListener("keydown",onKey,true);
-    if(last) last.style.outline="";
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("keydown", onKey, true);
     overlay.remove();
   }
   function onKey(e){
-    if(e.key==="Escape"){ cleanup(); alert("Picker cancelled."); }
+    if(e.key==="Escape"){ cleanup(); alert("Picker cancelled"); }
   }
-
   async function copyToClipboard(text){
-    try{ await navigator.clipboard.writeText(text); return true; }catch(e){ return false; }
-  }
-
-  function explain(msg){
-    console.log(msg);
-    overlay.title = msg;
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch { return false; }
   }
 
   function onClick(e){
-    e.preventDefault(); e.stopPropagation();
-    const el=document.elementFromPoint(e.clientX,e.clientY);
-    if(!el || el===overlay) return;
+    const el=document.elementFromPoint(e.clientX, e.clientY);
+    if(!el) return;
 
-    if(state.step===1){
-      const rowSel=findRepeatingRow(el);
-      const itemSel=makeRelativeItemSelector(rowSel, el);
-      state.rowSel=rowSel;
-      state.itemSel=itemSel;
-      state.step=2;
-      alert("✅ Item selected. Now click the pagination control (Next / Load more / Page link).\\nIf there is no pagination, press Esc.");
+    // highlight clicked element briefly
+    const prevOutline = el.style.outline;
+    el.style.outline = "3px solid #22c55e";
+    setTimeout(()=>{ el.style.outline = prevOutline; }, 600);
+
+    if(step===1){
+      rowSel=findRepeatingRow(el);
+
+      // item selector: prefer anchor inside the row
+      const a = el.closest("a[href]") || el;
+      const cls=stableClasses(a);
+      itemSel = cls.length ? (a.tagName.toLowerCase()+"."+cls.map(cssEscape).join(".")) : "a[href]";
+
+      step=2;
+      alert("✅ Item selected. Now click the pagination control (Next / Load more / page link).\\nPress Esc if none.");
       return;
     }
 
-    // step 2: pagination click target
     const pagEl = el.closest("a[href], button, [role='button']") || el;
-    state.pagSel = selectorFor(pagEl);
-    const text = (pagEl.textContent||"").trim().toLowerCase();
-    if(text.includes("load") || text.includes("more")) state.pagMode = "loadMore";
-    else if(text.includes("next") || text.includes("page") || pagEl.tagName.toLowerCase()==="a") state.pagMode = "nextButton";
-    else state.pagMode = "nextButton";
+    const pagSel = selectorFor(pagEl);
+    const text=(pagEl.textContent||"").trim().toLowerCase();
+    const mode = (text.includes("load")||text.includes("more")) ? "loadMore" : "nextButton";
 
-    const payload = {
-      rowSelector: state.rowSel,
-      itemSelector: state.itemSel,
-      pagination: { mode: state.pagMode, selector: state.pagSel }
-    };
-    const json = JSON.stringify(payload, null, 2);
+    // Special-case: segmented pagination (like #–C, C–H…) — better selector
+    let bestPagSel = pagSel;
+    const segNext = document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item');
+    if(segNext) bestPagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
+
+    const cfg = { rowSelector: rowSel, itemSelector: itemSel, pagination: { mode, selector: bestPagSel } };
+    const json = JSON.stringify(cfg, null, 2);
 
     cleanup();
 
     copyToClipboard(json).then(ok=>{
-      if(ok) alert("✅ Config copied to clipboard! Paste it into the Scraper Builder page.\\n\\n"+json);
+      if(ok) alert("✅ Config copied to clipboard! Paste it into your Scraper Builder.\\n\\n"+json);
       else prompt("Copy this JSON config:", json);
     });
   }
 
-  overlay.addEventListener("mousemove",onMove,true);
-  overlay.addEventListener("click",onClick,true);
-  document.addEventListener("keydown",onKey,true);
+  document.addEventListener("click", onClick, true);
+  document.addEventListener("keydown", onKey, true);
 
-  alert("🟢 Picker ON. Click the item name/link inside a card.\\nPress Esc to cancel.");
+  alert("🟢 Picker ON. Click the item name/link inside a card. (Esc to cancel)");
 })();`;
 }
+
 
 function setStatus(msg, ok=true){
   const s=document.getElementById("status");
