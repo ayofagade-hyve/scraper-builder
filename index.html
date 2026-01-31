@@ -124,6 +124,7 @@
  * - then clicks a pagination control
  * - we output JSON: rowSelector, itemSelector, pagMode + pagSelector
  */
+
 function makePickerCode() {
   return `(function(){
   const cssEscape=(s)=> (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,"\\\\$&");
@@ -159,7 +160,6 @@ function makePickerCode() {
     return null;
   }
 
-  // ✅ overlay does NOT capture clicks
   const overlay=document.createElement("div");
   overlay.style.cssText=[
     "position:fixed","inset:0","z-index:2147483647",
@@ -168,7 +168,11 @@ function makePickerCode() {
   ].join(";");
   document.body.appendChild(overlay);
 
-  let step=1, rowSel=null, itemSel=null;
+  // Choose the order: set to true if you want pagination first
+  const PAGINATION_FIRST = false;
+
+  let step = PAGINATION_FIRST ? 1 : 1;
+  let rowSel=null, itemSel=null, pagSel=null, pagMode="none";
 
   function cleanup(){
     document.removeEventListener("click", onClick, true);
@@ -178,58 +182,94 @@ function makePickerCode() {
   function onKey(e){
     if(e.key==="Escape"){ cleanup(); alert("Picker cancelled"); }
   }
+
   async function copyToClipboard(text){
     try { await navigator.clipboard.writeText(text); return true; }
     catch { return false; }
   }
 
+  function highlight(el){
+    if(!el) return;
+    const prev = el.style.outline;
+    el.style.outline = "3px solid #22c55e";
+    setTimeout(()=>{ el.style.outline = prev; }, 600);
+  }
+
+  function finalize(){
+    // Special-case segmented pagination on the RDMobile-style pages
+    const segNext = document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item');
+    if(segNext) pagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
+
+    const cfg = {
+      rowSelector: rowSel,
+      itemSelector: itemSel,
+      pagination: { mode: pagMode, selector: pagSel }
+    };
+    const json = JSON.stringify(cfg, null, 2);
+    cleanup();
+    copyToClipboard(json).then(ok=>{
+      if(ok) alert("✅ Config copied to clipboard! Paste into Scraper Builder.\\n\\n"+json);
+      else prompt("Copy this JSON config:", json);
+    });
+  }
+
   function onClick(e){
-    const el=document.elementFromPoint(e.clientX, e.clientY);
+    // ✅ stop navigation + stop site click handlers during picking
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const el = document.elementFromPoint(e.clientX, e.clientY);
     if(!el) return;
 
-    // highlight clicked element briefly
-    const prevOutline = el.style.outline;
-    el.style.outline = "3px solid #22c55e";
-    setTimeout(()=>{ el.style.outline = prevOutline; }, 600);
+    highlight(el);
 
-    if(step===1){
-      rowSel=findRepeatingRow(el);
-
-      // item selector: prefer anchor inside the row
+    // Pagination first flow
+    if(PAGINATION_FIRST){
+      if(step===1){
+        const pagEl = el.closest("a[href], button, [role='button']") || el;
+        pagSel = selectorFor(pagEl);
+        const text=(pagEl.textContent||"").trim().toLowerCase();
+        pagMode = (text.includes("load")||text.includes("more")) ? "loadMore" : "nextButton";
+        step=2;
+        alert("✅ Pagination selected. Now click an item name/link inside a card.");
+        return;
+      }
+      // step 2: item
+      rowSel = findRepeatingRow(el);
       const a = el.closest("a[href]") || el;
       const cls=stableClasses(a);
       itemSel = cls.length ? (a.tagName.toLowerCase()+"."+cls.map(cssEscape).join(".")) : "a[href]";
-
-      step=2;
-      alert("✅ Item selected. Now click the pagination control (Next / Load more / page link).\\nPress Esc if none.");
+      finalize();
       return;
     }
 
+    // Item first flow (default)
+    if(step===1){
+      rowSel=findRepeatingRow(el);
+      const a = el.closest("a[href]") || el;
+      const cls=stableClasses(a);
+      itemSel = cls.length ? (a.tagName.toLowerCase()+"."+cls.map(cssEscape).join(".")) : "a[href]";
+      step=2;
+      alert("✅ Item selected. Now click the pagination control (Next / Load more / page link). Press Esc if none.");
+      return;
+    }
+
+    // step 2: pagination
     const pagEl = el.closest("a[href], button, [role='button']") || el;
-    const pagSel = selectorFor(pagEl);
+    pagSel = selectorFor(pagEl);
     const text=(pagEl.textContent||"").trim().toLowerCase();
-    const mode = (text.includes("load")||text.includes("more")) ? "loadMore" : "nextButton";
-
-    // Special-case: segmented pagination (like #–C, C–H…) — better selector
-    let bestPagSel = pagSel;
-    const segNext = document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item');
-    if(segNext) bestPagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
-
-    const cfg = { rowSelector: rowSel, itemSelector: itemSel, pagination: { mode, selector: bestPagSel } };
-    const json = JSON.stringify(cfg, null, 2);
-
-    cleanup();
-
-    copyToClipboard(json).then(ok=>{
-      if(ok) alert("✅ Config copied to clipboard! Paste it into your Scraper Builder.\\n\\n"+json);
-      else prompt("Copy this JSON config:", json);
-    });
+    pagMode = (text.includes("load")||text.includes("more")) ? "loadMore" : "nextButton";
+    finalize();
   }
 
   document.addEventListener("click", onClick, true);
   document.addEventListener("keydown", onKey, true);
 
-  alert("🟢 Picker ON. Click the item name/link inside a card. (Esc to cancel)");
+  alert(PAGINATION_FIRST
+    ? "🟢 Picker ON. Click a pagination control first. (Esc to cancel)"
+    : "🟢 Picker ON. Click an item name/link inside a card. (Esc to cancel)"
+  );
 })();`;
 }
 
