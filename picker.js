@@ -1,3 +1,4 @@
+// picker.js (FULL FILE)
 (() => {
   if (window.__SCRAPER_PICKER_ACTIVE__) {
     alert("Picker already running. Press Esc to cancel.");
@@ -26,6 +27,7 @@
 
       const candidate = parts.join(" > ");
       if (document.querySelectorAll(candidate).length === 1) return candidate;
+
       cur = cur.parentElement;
     }
     return parts.join(" > ");
@@ -76,7 +78,6 @@
   let rowSelector = null;
   let itemSelector = null;
   let sectionName = null;
-  let paginationSelector = null;
 
   const onKey = (e) => {
     if (e.key === "Escape") {
@@ -90,17 +91,17 @@
   }
 
   function detectSection() {
-    const s = location.pathname;
-    const m = s.match(/\/(Exhibitors|Speakers|Sponsors|Sessions)\b/i);
+    const path = location.pathname;
+    const m = path.match(/\/(Exhibitors|Speakers|Sponsors|Sessions)\b/i);
     if (m && m[1]) return m[1][0].toUpperCase() + m[1].slice(1);
-    // fallback: look for any /X/Index/ links
+
     const a = document.querySelector('a[href*="/Exhibitors/Index/"],a[href*="/Speakers/Index/"],a[href*="/Sponsors/Index/"],a[href*="/Sessions/Index/"]');
     if (a) {
       const href = a.getAttribute("href") || "";
       const mm = href.match(/\/(Exhibitors|Speakers|Sponsors|Sessions)\/Index\//i);
       if (mm && mm[1]) return mm[1][0].toUpperCase() + mm[1].slice(1);
     }
-    return null;
+    return "Exhibitors";
   }
 
   const onPick = async (e) => {
@@ -114,18 +115,13 @@
     setTimeout(() => { el.style.outline = prev; }, 600);
 
     if (step === 1) {
-      sectionName = detectSection() || "Exhibitors";
+      sectionName = detectSection();
 
-      // Strong defaults for the event platform you’re using
-      if (document.querySelector("li.block-list__item")) {
-        rowSelector = "li.block-list__item";
-      } else {
-        rowSelector = findRepeatingRow(el) || selectorFor(el.parentElement) || "body";
-      }
+      if (document.querySelector("li.block-list__item")) rowSelector = "li.block-list__item";
+      else rowSelector = findRepeatingRow(el) || selectorFor(el.parentElement) || "body";
 
-      if (document.querySelector("strong.block-list__title a")) {
-        itemSelector = "strong.block-list__title a";
-      } else {
+      if (document.querySelector("strong.block-list__title a")) itemSelector = "strong.block-list__title a";
+      else {
         const a = el.closest("a[href]") || el;
         const cls = stableClasses(a);
         itemSelector = cls.length ? ("a." + cls.map(cssEscape).join(".")) : "a[href]";
@@ -136,16 +132,13 @@
       return;
     }
 
-    // For the proven pagination method, we want ALL Index links
-    paginationSelector = `a[href*="/${sectionName}/Index/"]`;
-
     const cfg = {
       sectionName,
       rowSelector,
       itemSelector,
       pagination: {
         mode: "indexPages",
-        selector: paginationSelector
+        selector: `a[href*="/${sectionName}/Index/"]`
       }
     };
 
@@ -157,7 +150,6 @@
     else prompt("Copy this JSON config:", json);
   };
 
-  // Block navigation while picking
   ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
     document.addEventListener(t, blocker, { capture: true, passive: false })
   );

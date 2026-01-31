@@ -1,3 +1,4 @@
+<!-- index.html (FULL FILE) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -30,7 +31,6 @@
     .pill { display:inline-block; font-size:11px; padding: 4px 8px; border-radius:999px; border:1px solid #2b425f; opacity:.95; }
     .muted { opacity:.78; font-size:12px; }
     .tiny { opacity:.78; font-size:11px; }
-    .kbd { border:1px solid #2b425f; border-bottom-width:2px; border-radius:7px; padding: 1px 6px; font-size:11px; opacity:.9; }
     hr { border:none; border-top:1px solid #1c2a40; margin:14px 0; }
     code { background:#0a1220; border:1px solid #20304a; padding: 1px 6px; border-radius: 6px; }
   </style>
@@ -41,7 +41,7 @@
       <div>
         <h1>Scraper Builder <span class="pill">Free • GitHub Pages</span></h1>
         <div class="sub">
-          Non-technical flow: create bookmarklet → click item + pagination → paste config → get a console script (CSV).
+          Create bookmarklet → click item + pagination → paste config → get a console script (CSV).
         </div>
       </div>
       <div class="pill">No backend • No API key</div>
@@ -57,7 +57,7 @@
         </div>
 
         <label>Bookmarklet URL (copy this)</label>
-        <textarea id="bookmarkletCode" style="min-height:140px;"></textarea>
+        <textarea id="bookmarkletCode" style="min-height:120px;"></textarea>
 
         <div class="btns">
           <button id="copyBookmarklet" class="good">Copy bookmarklet</button>
@@ -115,13 +115,13 @@
       <div class="card">
         <h2>Generated Script</h2>
         <div class="muted">
-          This uses the proven method: collect all <code>/${SECTION}/Index/</code> pages → fetch each → scrape <code>/${SECTION}/Details/</code> links → CSV.
+          Uses the proven method: crawl all <code>/${SECTION}/Index/</code> pages → fetch each → scrape rows → CSV.
         </div>
         <label>Console Script</label>
-        <textarea id="out" spellcheck="false" style="min-height:520px;"></textarea>
+        <textarea id="out" spellcheck="false" style="min-height:560px;"></textarea>
 
         <div class="tiny muted" style="margin-top:10px;">
-          Default for this event platform usually works as:<br/>
+          Good defaults for the event platform you’re using:<br/>
           <code>Row</code> = <code>li.block-list__item</code><br/>
           <code>Item</code> = <code>strong.block-list__title a</code><br/>
           <code>Pages</code> = <code>a[href*="/Exhibitors/Index/"]</code> (or Speakers/Sponsors)
@@ -149,11 +149,9 @@
     return `(async () => {
   const SECTION = ${JSON.stringify(SECTION)};
   const MODE = ${JSON.stringify(mode)}; // indexPages | none | fetchPages | nextButton | loadMore
-
   const ROW_SEL = ${JSON.stringify(rowSelector)};
   const ITEM_SEL = ${JSON.stringify(itemSelector)};
   const PAGINATION_SEL = ${JSON.stringify(pagSel)};
-
   const MAX_STEPS = 10; // nextButton only
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -197,48 +195,58 @@
 
   const map = new Map();
 
-  // ✅ This is the original proven pagination method
+  // ✅ Index Pages mode (works for full-page navigation pagination)
   if (MODE === "indexPages") {
     const baseUrl = location.origin;
 
-    // If PAGINATION_SEL is empty, default to Index links for the section
-    const indexSel = PAGINATION_SEL && PAGINATION_SEL.trim()
+    const indexSel = (PAGINATION_SEL && PAGINATION_SEL.trim())
       ? PAGINATION_SEL.trim()
       : \`a[href*="/\${SECTION}/Index/"]\`;
 
-    const detailSel = \`a[href^="/\${SECTION}/Details/"]\`;
+    // Crawl index pages: some UIs only show 1–2 links at a time
+    const queue = [];
+    const seen = new Set();
 
-    const indexPages = [...document.querySelectorAll(indexSel)]
-      .map(a => new URL(a.getAttribute("href"), baseUrl).href);
-
-    const uniqueIndexPages = [...new Set(indexPages)];
-    console.log("Index pages found:", uniqueIndexPages.length);
-
-    if (uniqueIndexPages.length === 0) {
-      console.warn("No Index pages found. Try setting PAGINATION_SEL to a[href*=\"/" + SECTION + "/Index/\"]");
-      // Still scrape current page so user gets something
-      const items = scrapeRowsFromDoc(document);
-      for(const it of items) map.set(it.url, it.name);
-    } else {
-      for (const url of uniqueIndexPages) {
-        console.log("Fetching:", url);
-        const res = await fetch(url, { credentials: "include" });
-        const html = await res.text();
-        const doc = new DOMParser().parseFromString(html, "text/html");
-
-        const links = [...doc.querySelectorAll(detailSel)];
-        for (const a of links) {
-          const name = (a.textContent || "").trim().replace(/\\s+/g, " ");
-          const href = a.getAttribute("href");
-          if(!name || !href) continue;
-          const abs = new URL(href, baseUrl).href;
-          map.set(abs, name);
-        }
-      }
+    function addUrl(u){
+      if(!u) return;
+      const clean = u.split("#")[0];
+      if(!seen.has(clean)){ seen.add(clean); queue.push(clean); }
     }
 
+    // Seed from current page + any visible index links
+    addUrl(location.href);
+    [...document.querySelectorAll(indexSel)].forEach(a => {
+      const href = a.getAttribute("href");
+      if(!href) return;
+      addUrl(new URL(href, baseUrl).href);
+    });
+
+    console.log("Index pages seeded:", queue.length);
+
+    while(queue.length){
+      const url = queue.shift();
+      console.log("Fetching:", url);
+
+      const res = await fetch(url, { credentials: "include" });
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+
+      // Scrape rows on this index page
+      const items = scrapeRowsFromDoc(doc);
+      for(const it of items) map.set(it.url, it.name);
+
+      // Discover more index links on this fetched page
+      [...doc.querySelectorAll(indexSel)].forEach(a => {
+        const href = a.getAttribute("href");
+        if(!href) return;
+        addUrl(new URL(href, baseUrl).href);
+      });
+    }
+
+    console.log("Total index pages crawled:", seen.size);
+
   } else if (MODE === "fetchPages") {
-    // Crawl pages by link discovery (fallback mode)
+    // Crawl pages by link discovery using PAGINATION_SEL
     const baseUrl = location.origin;
     const queue = [];
     const seen = new Set();
@@ -277,7 +285,7 @@
     }
 
   } else {
-    // In-page only (AJAX / load more)
+    // In-page modes (AJAX / load more)
     let lastSize = 0;
 
     for(let step=1; step<=MAX_STEPS; step++){
@@ -342,19 +350,13 @@
   function setBookmarkletCode(){
     const pickerUrl = new URL("picker.js", window.location.href).toString();
 
+    // ✅ short loader bookmarklet (not ugly)
     const code =
-`javascript:(()=>{try{
-  const u=${JSON.stringify(pickerUrl)}+"?v="+Date.now();
-  const s=document.createElement("script");
-  s.src=u; s.async=true;
-  s.onload=()=>console.log("[Picker] loaded",u);
-  s.onerror=()=>alert("Picker failed to load: "+u);
-  document.documentElement.appendChild(s);
-}catch(e){alert("Picker error: "+e.message);}})();`;
+`javascript:(()=>{var s=document.createElement('script');s.src=${JSON.stringify(pickerUrl)}+'?v='+Date.now();document.documentElement.appendChild(s);})();`;
 
     document.getElementById("bookmarkletCode").value = code;
     document.getElementById("pickHelp").textContent =
-      "Use on target site: click the bookmarklet → click an item → click any pagination segment. Esc cancels.";
+      "On the target site: click the bookmarklet → click an item → click any pagination segment. Esc cancels.";
 
     document.getElementById("copyBookmarklet").onclick = async () => {
       try { await navigator.clipboard.writeText(code); setStatus("Copied bookmarklet ✅"); }
@@ -370,16 +372,19 @@
     try {
       const cfg = JSON.parse(txt);
 
-      // Fill fields
       document.getElementById("sectionName").value = cfg.sectionName || cfg.section || "";
       document.getElementById("rowSelector").value = cfg.rowSelector || "";
       document.getElementById("itemSelector").value = cfg.itemSelector || "";
       document.getElementById("pagMode").value = (cfg.pagination?.mode || "indexPages");
       document.getElementById("pagSelector").value = (cfg.pagination?.selector || "");
 
-      // Defaults if missing (good for the event platform you’re using)
+      // Helpful defaults
       if(!document.getElementById("rowSelector").value) document.getElementById("rowSelector").value = "li.block-list__item";
       if(!document.getElementById("itemSelector").value) document.getElementById("itemSelector").value = "strong.block-list__title a";
+      if(!document.getElementById("pagSelector").value && document.getElementById("sectionName").value) {
+        const s = document.getElementById("sectionName").value.trim();
+        document.getElementById("pagSelector").value = `a[href*="/${s}/Index/"]`;
+      }
 
       updateOutput();
       setStatus("Loaded config ✅", true);
