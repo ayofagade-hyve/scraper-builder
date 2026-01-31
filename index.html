@@ -27,53 +27,68 @@
     .good { background:#16a34a22; border-color:#22c55e; }
     .primary { background:#1b4dff22; border-color:#2c63ff; }
     .ghost { background:transparent; }
-    .pill {
-      display:inline-block;
-      font-size:12px;
-      padding:10px 12px;
-      border-radius:999px;
-      border:1px solid #2b425f;
-      background:#0f1726;
-      color:#e8eef6;
-      text-decoration:none;
-      user-select:none;
-    }
-    .pill:hover { border-color:#3b5f86; }
+    .pillSmall { display:inline-block; font-size:11px; padding: 4px 8px; border-radius:999px; border:1px solid #2b425f; opacity:.95; }
     .muted { opacity:.78; font-size:12px; }
     .tiny { opacity:.78; font-size:11px; }
     hr { border:none; border-top:1px solid #1c2a40; margin:14px 0; }
     code { background:#0a1220; border:1px solid #20304a; padding: 1px 6px; border-radius: 6px; }
+
+    /* ✅ Pretty draggable pill */
+    .pillGreen{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid #14532d;
+      background: linear-gradient(180deg, rgba(34,197,94,.25), rgba(34,197,94,.10));
+      color:#eafff1;
+      text-decoration:none;
+      font-weight:700;
+      box-shadow: 0 6px 18px rgba(34,197,94,.12);
+      user-select:none;
+    }
+    .pillGreen:hover{
+      border-color:#22c55e;
+      box-shadow: 0 10px 22px rgba(34,197,94,.16);
+    }
+    .pillGreen:active{ transform: translateY(1px); }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
-        <h1>Scraper Builder <span class="pill" style="padding:4px 8px; font-size:11px;">Free • GitHub Pages</span></h1>
+        <h1>Scraper Builder <span class="pillSmall">Free • GitHub Pages</span></h1>
         <div class="sub">
-          Non-technical flow: add picker → click item → (optional) click pagination → paste config → run console script → CSV.
+          Non-technical flow: drag picker → click item → (optional) click pagination → paste config → copy console script → CSV.
         </div>
       </div>
-      <div class="pill" style="padding:4px 8px; font-size:11px;">No backend • No API key</div>
+      <div class="pillSmall">No backend • No API key</div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <h2>Step 1 — Add “Pick selectors”</h2>
+        <h2>Step 1 — Add “Selector” to your bookmarks bar</h2>
         <div class="muted">
-          Option A (pretty): drag this pill to your bookmarks bar (if your browser allows it).<br/>
-          Option B (always works): click the pill to copy, then paste into a bookmark URL.
+          Drag the green pill below onto your bookmarks bar.
+          <b>Don’t click it</b> — it’s meant to be dragged.
+          <br/>If drag is blocked by work policy, use <b>Copy</b> → Bookmark Manager → paste into the bookmark URL.
         </div>
 
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px;">
-          <a id="bookmarkletPretty" class="pill" href="#">🟢 Pick selectors</a>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+          <a id="bookmarkletPretty" class="pillGreen" href="javascript:void(0)" draggable="true">🟢 Selector</a>
           <button id="copyBookmarklet" class="good" style="width:auto;">Copy</button>
+          <button id="toggleAdvanced" class="ghost" style="width:auto;">Advanced</button>
         </div>
 
         <div class="tiny muted" id="pickHelp" style="margin-top:8px;"></div>
 
-        <label style="margin-top:12px;">Bookmarklet URL (manual copy/paste fallback)</label>
-        <textarea id="bookmarkletCode" style="min-height:120px;"></textarea>
+        <div id="advancedBox" style="display:none; margin-top:12px;">
+          <label>Bookmarklet URL (manual copy/paste fallback)</label>
+          <textarea id="bookmarkletCode" style="min-height:120px;"></textarea>
+        </div>
 
         <hr/>
 
@@ -92,7 +107,7 @@
 
         <h2>Step 3 — Generate console scraper</h2>
 
-        <label>Section name (auto-filled)</label>
+        <label>Section name</label>
         <input id="sectionName" placeholder="Exhibitors | Speakers | Sponsors | Sessions ..." />
 
         <label>Row/Card selector</label>
@@ -205,7 +220,7 @@
 
   const map = new Map();
 
-  // ✅ Index Pages mode (best for full-page navigation pagination)
+  // ✅ Best mode: crawl all Index pages, fetch each, scrape rows
   if (MODE === "indexPages") {
     const baseUrl = location.origin;
 
@@ -213,7 +228,6 @@
       ? PAGINATION_SEL.trim()
       : \`a[href*="/\${SECTION}/Index/"]\`;
 
-    // Crawl index pages: some UIs only show 1–2 links at a time
     const queue = [];
     const seen = new Set();
 
@@ -241,11 +255,10 @@
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
 
-      // Scrape rows on this index page
       const items = scrapeRowsFromDoc(doc);
       for(const it of items) map.set(it.url, it.name);
 
-      // Discover more index links on this fetched page
+      // Discover more index links from the fetched page
       [...doc.querySelectorAll(indexSel)].forEach(a => {
         const href = a.getAttribute("href");
         if(!href) return;
@@ -293,6 +306,11 @@
         addUrl(new URL(href, baseUrl).href);
       });
     }
+
+  } else if (MODE === "none") {
+    // Single page only
+    const items = scrapeRowsFromDoc(document);
+    for(const it of items) map.set(it.url, it.name);
 
   } else {
     // In-page modes (AJAX / load more)
@@ -360,29 +378,31 @@
   function setBookmarkletCode(){
     const pickerUrl = new URL("picker.js", window.location.href).toString();
 
-    // short + clean loader bookmarklet
+    // ✅ Short loader bookmarklet (looks nice when you drag the pill)
     const code =
 `javascript:(()=>{var s=document.createElement('script');s.src=${JSON.stringify(pickerUrl)}+'?v='+Date.now();document.documentElement.appendChild(s);})();`;
 
-    // Put into textarea
-    document.getElementById("bookmarkletCode").value = code;
-
-    // Make the pill draggable (bookmarklet href)
+    // Make the green pill draggable (real href)
     const pretty = document.getElementById("bookmarkletPretty");
-    pretty.href = code;
+    pretty.setAttribute("href", code);
 
-    // Clicking the pill copies instead of navigating
-    const copyFn = async (e) => {
-      if (e) e.preventDefault();
+    // Copy button copies the bookmarklet URL
+    document.getElementById("copyBookmarklet").onclick = async () => {
       try { await navigator.clipboard.writeText(code); setStatus("Copied bookmarklet ✅"); }
-      catch { setStatus("Clipboard blocked — copy manually.", false); }
+      catch { setStatus("Clipboard blocked — open Advanced and copy manually.", false); }
     };
 
-    pretty.addEventListener("click", copyFn);
-    document.getElementById("copyBookmarklet").onclick = copyFn;
+    // Advanced toggle
+    const adv = document.getElementById("advancedBox");
+    document.getElementById("toggleAdvanced").onclick = () => {
+      adv.style.display = (adv.style.display === "none") ? "block" : "none";
+    };
+
+    // Fill advanced textarea (hidden by default)
+    document.getElementById("bookmarkletCode").value = code;
 
     document.getElementById("pickHelp").textContent =
-      "On the target site: click the bookmarklet → click an item. If there’s NO pagination, press Esc at step 2.";
+      "Drag 🟢 Selector to bookmarks bar. On any site: click 🟢 Selector → click an item → click pagination (or press Esc if none).";
   }
 
   // UI wiring

@@ -84,15 +84,21 @@
 
   function detectSection() {
     const path = location.pathname;
+
+    // Common event sections
     const m = path.match(/\/(Exhibitors|Speakers|Sponsors|Sessions)\b/i);
     if (m && m[1]) return m[1][0].toUpperCase() + m[1].slice(1);
 
-    const a = document.querySelector('a[href*="/Exhibitors/Index/"],a[href*="/Speakers/Index/"],a[href*="/Sponsors/Index/"],a[href*="/Sessions/Index/"]');
+    // Fallback: look for any /X/Index/ link
+    const a = document.querySelector(
+      'a[href*="/Exhibitors/Index/"],a[href*="/Speakers/Index/"],a[href*="/Sponsors/Index/"],a[href*="/Sessions/Index/"]'
+    );
     if (a) {
       const href = a.getAttribute("href") || "";
       const mm = href.match(/\/(Exhibitors|Speakers|Sponsors|Sessions)\/Index\//i);
       if (mm && mm[1]) return mm[1][0].toUpperCase() + mm[1].slice(1);
     }
+
     return "Exhibitors";
   }
 
@@ -118,13 +124,14 @@
   const onKey = async (e) => {
     if (e.key !== "Escape") return;
 
+    // Esc on step 1 = cancel
     if (step === 1) {
       cleanup();
       alert("Picker cancelled.");
       return;
     }
 
-    // ✅ Step 2: Esc means “no pagination”
+    // ✅ Esc on step 2 = NO pagination
     await outputConfig("none", "");
   };
 
@@ -141,6 +148,7 @@
     if (step === 1) {
       sectionName = detectSection();
 
+      // Strong defaults for your event platform
       if (document.querySelector("li.block-list__item")) rowSelector = "li.block-list__item";
       else rowSelector = findRepeatingRow(el) || selectorFor(el.parentElement) || "body";
 
@@ -156,8 +164,7 @@
       return;
     }
 
-    // Step 2: we don’t actually need the clicked element —
-    // we want the robust index selector for this section.
+    // Step 2: use robust selector for Index pages
     await outputConfig("indexPages", `a[href*="/${sectionName}/Index/"]`);
   };
 
