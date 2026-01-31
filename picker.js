@@ -5,7 +5,8 @@
   }
   window.__SCRAPER_PICKER_ACTIVE__ = true;
 
-  const cssEscape = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  const cssEscape = (s) =>
+    (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
 
   const stableClasses = (el) => [...(el?.classList || [])]
     .filter(c => c && c.length < 40 && !/[0-9]{4,}/.test(c))
@@ -74,7 +75,7 @@
   document.body.appendChild(overlay);
 
   let step = 1;
-  let rowSel = null, itemSel = null, pagSel = null, pagMode = "fetchPages";
+  let rowSel = null, itemSel = null;
 
   const onKey = (e) => {
     if (e.key === "Escape") {
@@ -98,12 +99,11 @@
     setTimeout(() => { el.style.outline = prev; }, 600);
 
     if (step === 1) {
-      // Prefer known container if present
       const li = el.closest("li.block-list__item");
       rowSel = li ? "li.block-list__item" : findRepeatingRow(el);
 
-      // Prefer title link if present (RDMobile style)
       const rowEl = rowSel ? el.closest(rowSel) : null;
+
       if (rowEl?.querySelector("strong.block-list__title a[href]")) {
         itemSel = "strong.block-list__title a";
       } else {
@@ -120,23 +120,20 @@
       }
 
       step = 2;
-      alert("✅ Item selected.\nNow click a pagination link/segment.\n(Esc if none)");
+      alert("✅ Item selected.\nNow click ANY pagination segment/link.\n(Esc cancels)");
       return;
     }
 
-    // Pagination: default to fetchPages mode.
-    // Try to pick a selector that finds ALL page links.
-    // If the site has /Exhibitors/Index/, this is the best pattern.
+    // Pagination selector defaults for this event platform:
+    // Prefer /Exhibitors/Index/, /Speakers/Index/, /Sponsors/Index/ if present; else nav pagination links.
+    let pagSel = 'nav.pagination a.pagination__item[href]';
+
     const anyIndex = document.querySelector('a[href*="/Exhibitors/Index/"],a[href*="/Speakers/Index/"],a[href*="/Sponsors/Index/"]');
     if (anyIndex) {
       const href = anyIndex.getAttribute("href") || "";
       if (href.includes("/Exhibitors/Index/")) pagSel = 'a[href*="/Exhibitors/Index/"]';
       else if (href.includes("/Speakers/Index/")) pagSel = 'a[href*="/Speakers/Index/"]';
       else if (href.includes("/Sponsors/Index/")) pagSel = 'a[href*="/Sponsors/Index/"]';
-      else pagSel = 'nav.pagination a.pagination__item[href]';
-    } else {
-      // fallback: nav pagination links
-      pagSel = 'nav.pagination a.pagination__item[href]';
     }
 
     const cfg = {

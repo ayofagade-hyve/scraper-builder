@@ -21,13 +21,13 @@
       background:#0f1726; color:#e8eef6;
       padding:10px 12px; outline:none;
     }
-    textarea { min-height: 340px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.4; }
+    textarea { min-height: 320px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.4; }
     button { cursor:pointer; border:1px solid #2b425f; }
     .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
     .good { background:#16a34a22; border-color:#22c55e; }
     .primary { background:#1b4dff22; border-color:#2c63ff; }
     .ghost { background:transparent; }
-    .pill { display:inline-block; font-size:11px; padding: 10px 12px; border-radius:999px; border:1px solid #2b425f; opacity:.95; }
+    .pill { display:inline-block; font-size:11px; padding: 4px 8px; border-radius:999px; border:1px solid #2b425f; opacity:.95; }
     .muted { opacity:.78; font-size:12px; }
     .tiny { opacity:.78; font-size:11px; }
     .kbd { border:1px solid #2b425f; border-bottom-width:2px; border-radius:7px; padding: 1px 6px; font-size:11px; opacity:.9; }
@@ -41,25 +41,31 @@
   <div class="wrap">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
-        <h1>Scraper Builder <span class="pill" style="padding:4px 8px;">Free • GitHub Pages</span></h1>
+        <h1>Scraper Builder <span class="pill">Free • GitHub Pages</span></h1>
         <div class="sub">
-          Drag bookmarklet → click item + pagination → paste config → generate console script → CSV download.
+          Create bookmarklet → click item + pagination → paste config → generate console script → CSV download.
         </div>
       </div>
-      <div class="pill" style="padding:4px 8px;">No backend • No API key</div>
+      <div class="pill">No backend • No API key</div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <h2>Step 1 — Add the bookmarklet</h2>
+        <h2>Step 1 — Create the bookmarklet (copy/paste)</h2>
         <div class="muted">
-          Show bookmarks bar:
-          <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">B</span> (Windows) or
-          <span class="kbd">Cmd</span>+<span class="kbd">Shift</span>+<span class="kbd">B</span> (Mac)
+          Drag-to-bookmarks can be flaky (or blocked by work policy), so do this instead:<br/>
+          1) Open Bookmark Manager<br/>
+          2) Add new bookmark named <b>Pick selectors</b><br/>
+          3) Paste the code below into the bookmark <b>URL</b> field
         </div>
 
-        <label>Drag this onto your bookmarks bar</label>
-        <a id="bookmarklet" href="#" class="pill">🟢 Pick selectors</a>
+        <label>Bookmarklet URL (copy this)</label>
+        <textarea id="bookmarkletCode" style="min-height:140px;"></textarea>
+
+        <div class="btns">
+          <button id="copyBookmarklet" class="good">Copy bookmarklet</button>
+        </div>
+
         <div class="tiny muted status" id="pickHelp"></div>
 
         <hr/>
@@ -94,7 +100,7 @@
         </select>
 
         <label>Pagination selector</label>
-        <input id="pagSelector" placeholder='FetchPages: a[href*="/Exhibitors/Index/"]  OR  nav.pagination a.pagination__item[href]' />
+        <input id="pagSelector" placeholder='FetchPages: a[href*="/Exhibitors/Index/"] OR nav.pagination a.pagination__item[href]' />
 
         <div class="btns">
           <button id="copyScript" class="good">Copy script</button>
@@ -111,8 +117,10 @@
         <label>Console Script</label>
         <textarea id="out" spellcheck="false"></textarea>
         <div class="tiny muted">
-          Tip: If you only see 2 pagination pages, set Pagination selector to <code>a[href*="/Exhibitors/Index/"]</code>
-          (or Speakers/Sponsors).
+          Best selectors for that event platform usually are:<br/>
+          <code>ROW</code> = <code>li.block-list__item</code><br/>
+          <code>ITEM</code> = <code>strong.block-list__title a</code><br/>
+          <code>PAGES</code> = <code>a[href*="/Exhibitors/Index/"]</code> (or Speakers/Sponsors)
         </div>
       </div>
     </div>
@@ -150,7 +158,6 @@
     const rows = [...doc.querySelectorAll(ROW_SEL)];
     const out = [];
     for (const row of rows) {
-      // ✅ handles when row is the <a> itself OR a container
       const a = (row.matches && row.matches(ITEM_SEL)) ? row : row.querySelector(ITEM_SEL);
       const name = (a?.textContent || "").trim().replace(/\\s+/g, " ") || null;
       const url = absUrl(a?.getAttribute("href"));
@@ -183,7 +190,7 @@
   if (MODE === "fetchPages") {
     const baseUrl = location.origin;
 
-    // ✅ CRAWL pages: pagination UI may only show 2 links at a time
+    // Crawl pages: pagination UI may only show 2 links at a time
     const queue = [];
     const seen = new Set();
 
@@ -214,11 +221,10 @@
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
 
-      // scrape this page
       const items = scrapeFromDoc(doc);
       for(const it of items) map.set(it.url, it.name);
 
-      // discover more page links on this page
+      // discover more links on this fetched page
       [...doc.querySelectorAll(PAGINATION_SEL)].forEach(a => {
         const href = a.getAttribute("href");
         if(!href) return;
@@ -229,7 +235,7 @@
     console.log("Total pages crawled:", seen.size);
 
   } else {
-    // ✅ In-page scraping only works if the page does NOT fully navigate away
+    // In-page pagination only (won't work if clicking navigates away)
     let lastSize = 0;
 
     for (let step=1; step<=MAX_STEPS; step++){
@@ -289,12 +295,11 @@
     });
   }
 
-  // ✅ short bookmarklet that loads picker.js from this same GitHub Pages site
-  function setBookmarkletLink(){
+  function setBookmarkletCode(){
     const pickerUrl = new URL("picker.js", window.location.href).toString();
 
-    const js =
-`(()=>{try{
+    const code =
+`javascript:(()=>{try{
   const u=${JSON.stringify(pickerUrl)}+"?v="+Date.now();
   const s=document.createElement("script");
   s.src=u; s.async=true;
@@ -303,11 +308,14 @@
   document.documentElement.appendChild(s);
 }catch(e){alert("Picker error: "+e.message);}})();`;
 
-    const a = document.getElementById("bookmarklet");
-    a.href = "javascript:" + js;
-    a.addEventListener("click", (e) => e.preventDefault());
+    document.getElementById("bookmarkletCode").value = code;
     document.getElementById("pickHelp").textContent =
-      "Drag this to bookmarks. On the target site: click it → click item → click pagination.";
+      "On the target site: click the bookmarklet → click item → click pagination. Esc cancels.";
+
+    document.getElementById("copyBookmarklet").onclick = async () => {
+      try { await navigator.clipboard.writeText(code); setStatus("Copied bookmarklet ✅"); }
+      catch { setStatus("Clipboard blocked — copy manually.", false); }
+    };
   }
 
   document.getElementById("loadConfig").addEventListener("click", () => {
@@ -315,12 +323,10 @@
     if(!txt) return setStatus("Paste the JSON config first.", false);
     try {
       const cfg = JSON.parse(txt);
-
       document.getElementById("rowSelector").value = cfg.rowSelector || "";
       document.getElementById("itemSelector").value = cfg.itemSelector || "";
       document.getElementById("pagMode").value = cfg.pagination?.mode || "none";
       document.getElementById("pagSelector").value = cfg.pagination?.selector || "";
-
       updateOutput();
       setStatus("Loaded config ✅", true);
     } catch {
@@ -344,7 +350,7 @@
     catch { setStatus("Clipboard blocked—copy manually.", false); }
   });
 
-  setBookmarkletLink();
+  setBookmarkletCode();
   updateOutput();
 </script>
 </body>
