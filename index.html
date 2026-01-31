@@ -178,52 +178,55 @@
 
   const map = new Map();
 
-  if (MODE === "fetchPages") {
-    // ✅ Fetch all page URLs from pagination and scrape each page via fetch + DOMParser
-    const baseUrl = location.origin;
+if (MODE === "fetchPages") {
+  const baseUrl = location.origin;
 
-    const pageUrls = [...document.querySelectorAll(PAGINATION_SEL)]
-      .map(a => new URL(a.getAttribute("href"), baseUrl).href);
+  // Start with links on the current page
+  const queue = [];
+  const seen = new Set();
 
-    pageUrls.push(location.href); // include current page
-    const uniquePages = [...new Set(pageUrls)];
-
-    console.log("Pages found:", uniquePages.length);
-
-    for (const url of uniquePages) {
-      console.log("Fetching:", url);
-      const res = await fetch(url, { credentials: "include" });
-      const html = await res.text();
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const items = scrapeFromDoc(doc);
-      for(const it of items) map.set(it.url, it.name);
-    }
-
-  } else {
-    // Existing in-page scraping (works only when page does NOT navigate)
-    let lastSize = 0;
-
-    for (let step=1; step<=MAX_STEPS; step++){
-      if(MODE==="loadMore") await clickLoadMore();
-
-      const items = scrapeFromDoc(document);
-      for(const it of items) map.set(it.url, it.name);
-
-      console.log(\`Step \${step} — page items: \${items.length} — total unique: \${map.size}\`);
-
-      if(map.size === lastSize) break;
-      lastSize = map.size;
-
-      if(MODE==="nextButton"){
-        const ok = await clickNext();
-        if(!ok) break;
-      } else {
-        break;
-      }
-
-      await sleep(rand(700, 1300));
+  function addUrl(u){
+    if (!u) return;
+    // Normalize: remove hash so duplicates don't happen
+    const clean = u.split("#")[0];
+    if (!seen.has(clean)) {
+      seen.add(clean);
+      queue.push(clean);
     }
   }
+
+  // seed with current page + any page links we can see
+  addUrl(location.href);
+  [...document.querySelectorAll(PAGINATION_SEL)].forEach(a => {
+    const href = a.getAttribute("href");
+    addUrl(new URL(href, baseUrl).href);
+  });
+
+  console.log("Seed pages:", queue.length);
+
+  // Crawl: each fetched page may reveal more pagination links
+  while (queue.length) {
+    const url = queue.shift();
+    console.log("Fetching:", url);
+
+    const res = await fetch(url, { credentials: "include" });
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+
+    // scrape items from this page
+    const items = scrapeFromDoc(doc);
+    for (const it of items) map.set(it.url, it.name);
+
+    // discover more pagination links from this page
+    [...doc.querySelectorAll(PAGINATION_SEL)].forEach(a => {
+      const href = a.getAttribute("href");
+      if (!href) return;
+      addUrl(new URL(href, baseUrl).href);
+    });
+  }
+
+  console.log("Total pages crawled:", seen.size);
+}
 
   const rows = [
     ["Name","URL"],
