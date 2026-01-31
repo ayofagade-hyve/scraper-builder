@@ -407,12 +407,13 @@ function updateOutput() {
 
 function setBookmarkletLink(){
   const raw = makePickerCode();
-  // ✅ no encodeURIComponent — it breaks bookmarklets
   const a = document.getElementById("bookmarklet");
-  a.href = "javascript:" + raw;
+  a.href = "javascript:" + raw;   // ✅ do not encode
+  a.addEventListener("click", (e) => e.preventDefault()); // ✅ prevent opening your site when clicked
   document.getElementById("pickHelp").textContent =
     "Drag the ‘Pick selectors’ pill to your bookmarks bar. Then use it on any site.";
 }
+
 
 // wire UI
 document.getElementById("loadConfig").addEventListener("click", () => {
