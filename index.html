@@ -1,3 +1,4 @@
+<!-- ✅ FINAL index.html (FULL FILE) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -33,7 +34,7 @@
     hr { border:none; border-top:1px solid #1c2a40; margin:14px 0; }
     code { background:#0a1220; border:1px solid #20304a; padding: 1px 6px; border-radius: 6px; }
 
-    /* ✅ Pretty draggable pill */
+    /* Pretty draggable pill */
     .pillGreen{
       display:inline-flex;
       align-items:center;
@@ -62,7 +63,7 @@
       <div>
         <h1>Scraper Builder <span class="pillSmall">Free • GitHub Pages</span></h1>
         <div class="sub">
-          Non-technical flow: drag picker → click item → (optional) click pagination → paste config → copy console script → CSV.
+          Drag selector → click item → (optional) click Pages → paste config → copy console script → CSV.
         </div>
       </div>
       <div class="pillSmall">No backend • No API key</div>
@@ -74,7 +75,7 @@
         <div class="muted">
           Drag the green pill below onto your bookmarks bar.
           <b>Don’t click it</b> — it’s meant to be dragged.
-          <br/>If drag is blocked by work policy, use <b>Copy</b> → Bookmark Manager → paste into the bookmark URL.
+          <br/>If drag is blocked, use <b>Copy</b> → Bookmark Manager → paste into the bookmark URL.
         </div>
 
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
@@ -92,9 +93,9 @@
 
         <hr/>
 
-        <h2>Step 2 — Paste picker output</h2>
-        <label>Picker Output (JSON)</label>
-        <textarea id="config" placeholder='Paste the JSON you got after picking item + pagination (or Esc for no pagination)...'></textarea>
+        <h2>Step 2 — Paste selector output</h2>
+        <label>Selector Output (JSON)</label>
+        <textarea id="config" placeholder='Paste the JSON you got after picking item + Pages (or Esc for no Pages)...'></textarea>
 
         <div class="btns">
           <button id="loadConfig" class="primary">Load config</button>
@@ -116,17 +117,17 @@
         <label>Item link selector (inside each row)</label>
         <input id="itemSelector" placeholder="e.g. strong.block-list__title a" />
 
-        <label>Pagination mode</label>
+        <label>Pages mode</label>
         <select id="pagMode">
-          <option value="indexPages">Index pages (recommended)</option>
-          <option value="none">None (single page)</option>
-          <option value="fetchPages">Fetch page links (crawl)</option>
-          <option value="nextButton">Click next (AJAX only)</option>
-          <option value="loadMore">Load more button</option>
+          <option value="indexPages">Pages (Index links) — recommended</option>
+          <option value="none">No pages (single page)</option>
+          <option value="fetchPages">Pages (crawl links)</option>
+          <option value="nextButton">Pages (click Next — AJAX)</option>
+          <option value="loadMore">Pages (Load more)</option>
         </select>
 
-        <label>Pagination selector</label>
-        <input id="pagSelector" placeholder='For indexPages: a[href*="/Exhibitors/Index/"] etc' />
+        <label>Pages selector</label>
+        <input id="pagSelector" placeholder='For indexPages: a[href*="/Exhibitors/Index/"] (or Speakers/Sponsors)…' />
 
         <div class="btns">
           <button id="copyScript" class="good">Copy script</button>
@@ -140,17 +141,11 @@
       <div class="card">
         <h2>Generated Script</h2>
         <div class="muted">
-          Uses the proven method: crawl all <code>/${SECTION}/Index/</code> pages → fetch each → scrape rows → CSV.
+          Best mode: crawl all <code>/${SECTION}/Index/</code> pages → fetch each → scrape rows → CSV.
+          If a site has no Pages, the script will say so and export what’s available.
         </div>
         <label>Console Script</label>
         <textarea id="out" spellcheck="false" style="min-height:560px;"></textarea>
-
-        <div class="tiny muted" style="margin-top:10px;">
-          Good defaults for that event platform:<br/>
-          <code>Row</code> = <code>li.block-list__item</code><br/>
-          <code>Item</code> = <code>strong.block-list__title a</code><br/>
-          <code>Pages</code> = <code>a[href*="/Exhibitors/Index/"]</code> (or Speakers/Sponsors)
-        </div>
       </div>
     </div>
   </div>
@@ -163,20 +158,20 @@
     setTimeout(()=>{ s.textContent=""; s.style.color=""; }, 2500);
   }
 
-  function generateScript({sectionName, rowSelector, itemSelector, paginationMode, paginationSelector}) {
+  function generateScript({sectionName, rowSelector, itemSelector, pagesMode, pagesSelector}) {
     const SECTION = (sectionName || "").trim();
     if(!SECTION) return "// Provide sectionName (e.g. Exhibitors / Speakers / Sponsors)\n";
     if(!rowSelector || !itemSelector) return "// Provide rowSelector and itemSelector.\n";
 
-    const mode = paginationMode || "indexPages";
-    const pagSel = paginationSelector || "";
+    const mode = pagesMode || "indexPages";
+    const sel = pagesSelector || "";
 
     return `(async () => {
   const SECTION = ${JSON.stringify(SECTION)};
   const MODE = ${JSON.stringify(mode)}; // indexPages | none | fetchPages | nextButton | loadMore
   const ROW_SEL = ${JSON.stringify(rowSelector)};
   const ITEM_SEL = ${JSON.stringify(itemSelector)};
-  const PAGINATION_SEL = ${JSON.stringify(pagSel)};
+  const PAGES_SEL = ${JSON.stringify(sel)};
   const MAX_STEPS = 10; // nextButton only
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -200,7 +195,7 @@
   }
 
   async function clickNext(){
-    const btn = document.querySelector(PAGINATION_SEL);
+    const btn = document.querySelector(PAGES_SEL);
     if(!btn) return false;
     btn.click();
     await sleep(rand(700, 1300));
@@ -209,7 +204,7 @@
 
   async function clickLoadMore(){
     while(true){
-      const btn = document.querySelector(PAGINATION_SEL);
+      const btn = document.querySelector(PAGES_SEL);
       if(!btn) break;
       if(btn.disabled) break;
       btn.click();
@@ -220,12 +215,11 @@
 
   const map = new Map();
 
-  // ✅ Best mode: crawl all Index pages, fetch each, scrape rows
   if (MODE === "indexPages") {
     const baseUrl = location.origin;
 
-    const indexSel = (PAGINATION_SEL && PAGINATION_SEL.trim())
-      ? PAGINATION_SEL.trim()
+    const indexSel = (PAGES_SEL && PAGES_SEL.trim())
+      ? PAGES_SEL.trim()
       : \`a[href*="/\${SECTION}/Index/"]\`;
 
     const queue = [];
@@ -237,7 +231,6 @@
       if(!seen.has(clean)){ seen.add(clean); queue.push(clean); }
     }
 
-    // Seed from current page + any visible index links
     addUrl(location.href);
     [...document.querySelectorAll(indexSel)].forEach(a => {
       const href = a.getAttribute("href");
@@ -245,7 +238,10 @@
       addUrl(new URL(href, baseUrl).href);
     });
 
-    console.log("Index pages seeded:", queue.length);
+    console.log("Pages seeded:", queue.length);
+    if (queue.length <= 1) {
+      console.warn("⚠️ No extra Pages detected (Index links). This site may be single-page. Exporting what’s available.");
+    }
 
     while(queue.length){
       const url = queue.shift();
@@ -258,7 +254,6 @@
       const items = scrapeRowsFromDoc(doc);
       for(const it of items) map.set(it.url, it.name);
 
-      // Discover more index links from the fetched page
       [...doc.querySelectorAll(indexSel)].forEach(a => {
         const href = a.getAttribute("href");
         if(!href) return;
@@ -266,10 +261,12 @@
       });
     }
 
-    console.log("Total index pages crawled:", seen.size);
+    console.log("Total Pages crawled:", seen.size);
+    if (seen.size <= 1) {
+      console.warn("ℹ️ This site doesn’t expose multiple Pages via Index links. If you expected more, try Pages mode = 'No pages' or 'Pages (crawl links)'.");
+    }
 
   } else if (MODE === "fetchPages") {
-    // Crawl pages by link discovery using PAGINATION_SEL
     const baseUrl = location.origin;
     const queue = [];
     const seen = new Set();
@@ -281,13 +278,14 @@
     }
 
     addUrl(location.href);
-    [...document.querySelectorAll(PAGINATION_SEL)].forEach(a => {
+    [...document.querySelectorAll(PAGES_SEL)].forEach(a => {
       const href = a.getAttribute("href");
       if(!href) return;
       addUrl(new URL(href, baseUrl).href);
     });
 
-    console.log("Seed pages:", queue.length);
+    console.log("Pages seeded:", queue.length);
+    if (queue.length <= 1) console.warn("⚠️ No extra Pages detected from the Pages selector. Exporting what’s available.");
 
     while(queue.length){
       const url = queue.shift();
@@ -300,7 +298,7 @@
       const items = scrapeRowsFromDoc(doc);
       for(const it of items) map.set(it.url, it.name);
 
-      [...doc.querySelectorAll(PAGINATION_SEL)].forEach(a => {
+      [...doc.querySelectorAll(PAGES_SEL)].forEach(a => {
         const href = a.getAttribute("href");
         if(!href) return;
         addUrl(new URL(href, baseUrl).href);
@@ -308,12 +306,11 @@
     }
 
   } else if (MODE === "none") {
-    // Single page only
+    console.log("No Pages mode — scraping current page only.");
     const items = scrapeRowsFromDoc(document);
     for(const it of items) map.set(it.url, it.name);
 
   } else {
-    // In-page modes (AJAX / load more)
     let lastSize = 0;
 
     for(let step=1; step<=MAX_STEPS; step++){
@@ -329,7 +326,10 @@
 
       if(MODE==="nextButton"){
         const ok = await clickNext();
-        if(!ok) break;
+        if(!ok) {
+          console.warn("⚠️ Next button not found. This site may not support Pages in this mode. Exporting what’s available.");
+          break;
+        }
       } else {
         break;
       }
@@ -363,46 +363,40 @@
     const sectionName = document.getElementById("sectionName").value.trim();
     const rowSelector = document.getElementById("rowSelector").value.trim();
     const itemSelector = document.getElementById("itemSelector").value.trim();
-    const pagMode = document.getElementById("pagMode").value;
-    const pagSelector = document.getElementById("pagSelector").value.trim();
+    const pagesMode = document.getElementById("pagMode").value;
+    const pagesSelector = document.getElementById("pagSelector").value.trim();
 
     document.getElementById("out").value = generateScript({
       sectionName,
       rowSelector,
       itemSelector,
-      paginationMode: pagMode,
-      paginationSelector: pagSelector
+      pagesMode,
+      pagesSelector
     });
   }
 
   function setBookmarkletCode(){
     const pickerUrl = new URL("picker.js", window.location.href).toString();
 
-    // ✅ Short loader bookmarklet (looks nice when you drag the pill)
     const code =
 `javascript:(()=>{var s=document.createElement('script');s.src=${JSON.stringify(pickerUrl)}+'?v='+Date.now();document.documentElement.appendChild(s);})();`;
 
-    // Make the green pill draggable (real href)
-    const pretty = document.getElementById("bookmarkletPretty");
-    pretty.setAttribute("href", code);
+    document.getElementById("bookmarkletPretty").setAttribute("href", code);
 
-    // Copy button copies the bookmarklet URL
     document.getElementById("copyBookmarklet").onclick = async () => {
       try { await navigator.clipboard.writeText(code); setStatus("Copied bookmarklet ✅"); }
       catch { setStatus("Clipboard blocked — open Advanced and copy manually.", false); }
     };
 
-    // Advanced toggle
     const adv = document.getElementById("advancedBox");
     document.getElementById("toggleAdvanced").onclick = () => {
       adv.style.display = (adv.style.display === "none") ? "block" : "none";
     };
 
-    // Fill advanced textarea (hidden by default)
     document.getElementById("bookmarkletCode").value = code;
 
     document.getElementById("pickHelp").textContent =
-      "Drag 🟢 Selector to bookmarks bar. On any site: click 🟢 Selector → click an item → click pagination (or press Esc if none).";
+      "Drag 🟢 Selector to bookmarks bar. On any site: click 🟢 Selector → click an item → click Pages (or press Esc if there are no Pages).";
   }
 
   // UI wiring
@@ -416,10 +410,9 @@
       document.getElementById("sectionName").value = cfg.sectionName || cfg.section || "";
       document.getElementById("rowSelector").value = cfg.rowSelector || "";
       document.getElementById("itemSelector").value = cfg.itemSelector || "";
-      document.getElementById("pagMode").value = (cfg.pagination?.mode || "indexPages");
-      document.getElementById("pagSelector").value = (cfg.pagination?.selector || "");
+      document.getElementById("pagMode").value = (cfg.pagination?.mode || cfg.pages?.mode || "indexPages");
+      document.getElementById("pagSelector").value = (cfg.pagination?.selector || cfg.pages?.selector || "");
 
-      // Helpful defaults
       if(!document.getElementById("rowSelector").value) document.getElementById("rowSelector").value = "li.block-list__item";
       if(!document.getElementById("itemSelector").value) document.getElementById("itemSelector").value = "strong.block-list__title a";
 

@@ -1,3 +1,4 @@
+// ✅ FINAL picker.js (FULL FILE: “Pages” wording + honest ‘no Pages’ messages)
 (() => {
   if (window.__SCRAPER_PICKER_ACTIVE__) {
     alert("Picker already running. Press Esc to cancel.");
@@ -85,11 +86,9 @@
   function detectSection() {
     const path = location.pathname;
 
-    // Common event sections
     const m = path.match(/\/(Exhibitors|Speakers|Sponsors|Sessions)\b/i);
     if (m && m[1]) return m[1][0].toUpperCase() + m[1].slice(1);
 
-    // Fallback: look for any /X/Index/ link
     const a = document.querySelector(
       'a[href*="/Exhibitors/Index/"],a[href*="/Speakers/Index/"],a[href*="/Sponsors/Index/"],a[href*="/Sessions/Index/"]'
     );
@@ -102,15 +101,13 @@
     return "Exhibitors";
   }
 
-  async function outputConfig(paginationMode, paginationSelector) {
+  async function outputConfig(pagesMode, pagesSelector) {
     const cfg = {
       sectionName,
       rowSelector,
       itemSelector,
-      pagination: {
-        mode: paginationMode,
-        selector: paginationSelector || ""
-      }
+      // Keep key name for builder compatibility
+      pagination: { mode: pagesMode, selector: pagesSelector || "" }
     };
 
     const json = JSON.stringify(cfg, null, 2);
@@ -124,14 +121,13 @@
   const onKey = async (e) => {
     if (e.key !== "Escape") return;
 
-    // Esc on step 1 = cancel
     if (step === 1) {
       cleanup();
       alert("Picker cancelled.");
       return;
     }
 
-    // ✅ Esc on step 2 = NO pagination
+    alert("ℹ️ No Pages selected. This site will be treated as single-page.");
     await outputConfig("none", "");
   };
 
@@ -148,7 +144,6 @@
     if (step === 1) {
       sectionName = detectSection();
 
-      // Strong defaults for your event platform
       if (document.querySelector("li.block-list__item")) rowSelector = "li.block-list__item";
       else rowSelector = findRepeatingRow(el) || selectorFor(el.parentElement) || "body";
 
@@ -160,20 +155,26 @@
       }
 
       step = 2;
-      alert("✅ Item selected.\nNow click ANY pagination segment/link.\nIf there is NO pagination, press Esc.");
+      alert("✅ Item selected.\nNow click ANY Pages control (Next / Page 2 / A–C etc).\nIf this site has NO Pages, press Esc.");
       return;
     }
 
-    // Step 2: use robust selector for Index pages
-    await outputConfig("indexPages", `a[href*="/${sectionName}/Index/"]`);
+    const sel = `a[href*="/${sectionName}/Index/"]`;
+    const n = document.querySelectorAll(sel).length;
+
+    if (n === 0) {
+      alert("ℹ️ This site doesn’t appear to have multiple Pages (no Index links found). I’ll set it to single-page export.");
+      await outputConfig("none", "");
+    } else {
+      await outputConfig("indexPages", sel);
+    }
   };
 
-  // Block navigation while picking
   ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
     document.addEventListener(t, blocker, { capture: true, passive: false })
   );
   document.addEventListener("pointerup", onPick, { capture: true, passive: false });
   document.addEventListener("keydown", onKey, true);
 
-  alert("🟢 Picker ON.\nClicks will NOT navigate.\nClick an item name/link first.\n(Esc cancels / or skips pagination at step 2)");
+  alert("🟢 Picker ON.\nClicks will NOT navigate.\nClick an item first.\n(Esc cancels / or says ‘no Pages’ at step 2)");
 })();
