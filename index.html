@@ -21,7 +21,7 @@
       background:#0f1726; color:#e8eef6;
       padding:10px 12px; outline:none;
     }
-    textarea { min-height: 320px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.4; }
+    textarea { min-height: 260px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.4; }
     button { cursor:pointer; border:1px solid #2b425f; }
     .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
     .good { background:#16a34a22; border-color:#22c55e; }
@@ -31,10 +31,8 @@
     .muted { opacity:.78; font-size:12px; }
     .tiny { opacity:.78; font-size:11px; }
     .kbd { border:1px solid #2b425f; border-bottom-width:2px; border-radius:7px; padding: 1px 6px; font-size:11px; opacity:.9; }
-    a { color:#9bb7ff; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .status { margin-top:10px; }
     hr { border:none; border-top:1px solid #1c2a40; margin:14px 0; }
+    code { background:#0a1220; border:1px solid #20304a; padding: 1px 6px; border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -43,7 +41,7 @@
       <div>
         <h1>Scraper Builder <span class="pill">Free • GitHub Pages</span></h1>
         <div class="sub">
-          Create bookmarklet → click item + pagination → paste config → generate console script → CSV download.
+          Non-technical flow: create bookmarklet → click item + pagination → paste config → get a console script (CSV).
         </div>
       </div>
       <div class="pill">No backend • No API key</div>
@@ -53,8 +51,7 @@
       <div class="card">
         <h2>Step 1 — Create the bookmarklet (copy/paste)</h2>
         <div class="muted">
-          Drag-to-bookmarks can be flaky (or blocked by work policy), so do this instead:<br/>
-          1) Open Bookmark Manager<br/>
+          1) Open Chrome <b>Bookmark Manager</b><br/>
           2) Add new bookmark named <b>Pick selectors</b><br/>
           3) Paste the code below into the bookmark <b>URL</b> field
         </div>
@@ -66,24 +63,27 @@
           <button id="copyBookmarklet" class="good">Copy bookmarklet</button>
         </div>
 
-        <div class="tiny muted status" id="pickHelp"></div>
+        <div class="tiny muted" id="pickHelp" style="margin-top:8px;"></div>
 
         <hr/>
 
-        <h2>Step 2 — Paste config</h2>
+        <h2>Step 2 — Paste picker output</h2>
         <label>Picker Output (JSON)</label>
-        <textarea id="config" placeholder='Paste JSON here...'></textarea>
+        <textarea id="config" placeholder='Paste the JSON you got after clicking item + pagination...'></textarea>
 
         <div class="btns">
           <button id="loadConfig" class="primary">Load config</button>
           <button id="clearConfig" class="ghost">Clear</button>
         </div>
 
-        <div class="status tiny" id="status"></div>
+        <div class="tiny" id="status" style="margin-top:10px;"></div>
 
         <hr/>
 
         <h2>Step 3 — Generate console scraper</h2>
+
+        <label>Section name (auto-filled)</label>
+        <input id="sectionName" placeholder="Exhibitors | Speakers | Sponsors | Sessions ..." />
 
         <label>Row/Card selector</label>
         <input id="rowSelector" placeholder="e.g. li.block-list__item" />
@@ -93,34 +93,38 @@
 
         <label>Pagination mode</label>
         <select id="pagMode">
+          <option value="indexPages">Index pages (recommended)</option>
           <option value="none">None (single page)</option>
-          <option value="fetchPages">Fetch page links (recommended)</option>
+          <option value="fetchPages">Fetch page links (crawl)</option>
           <option value="nextButton">Click next (AJAX only)</option>
           <option value="loadMore">Load more button</option>
         </select>
 
         <label>Pagination selector</label>
-        <input id="pagSelector" placeholder='FetchPages: a[href*="/Exhibitors/Index/"] OR nav.pagination a.pagination__item[href]' />
+        <input id="pagSelector" placeholder='For indexPages: a[href*="/Exhibitors/Index/"] etc' />
 
         <div class="btns">
           <button id="copyScript" class="good">Copy script</button>
         </div>
 
         <div class="muted" style="margin-top:10px;">
-          Run it on the target page: DevTools → Console → paste → Enter.
+          Run the generated script on the target page: DevTools → Console → paste → Enter.
         </div>
       </div>
 
       <div class="card">
         <h2>Generated Script</h2>
-        <div class="muted">Scrapes Name + URL and downloads CSV.</div>
+        <div class="muted">
+          This uses the proven method: collect all <code>/${SECTION}/Index/</code> pages → fetch each → scrape <code>/${SECTION}/Details/</code> links → CSV.
+        </div>
         <label>Console Script</label>
-        <textarea id="out" spellcheck="false"></textarea>
-        <div class="tiny muted">
-          Best selectors for that event platform usually are:<br/>
-          <code>ROW</code> = <code>li.block-list__item</code><br/>
-          <code>ITEM</code> = <code>strong.block-list__title a</code><br/>
-          <code>PAGES</code> = <code>a[href*="/Exhibitors/Index/"]</code> (or Speakers/Sponsors)
+        <textarea id="out" spellcheck="false" style="min-height:520px;"></textarea>
+
+        <div class="tiny muted" style="margin-top:10px;">
+          Default for this event platform usually works as:<br/>
+          <code>Row</code> = <code>li.block-list__item</code><br/>
+          <code>Item</code> = <code>strong.block-list__title a</code><br/>
+          <code>Pages</code> = <code>a[href*="/Exhibitors/Index/"]</code> (or Speakers/Sponsors)
         </div>
       </div>
     </div>
@@ -134,16 +138,22 @@
     setTimeout(()=>{ s.textContent=""; s.style.color=""; }, 2500);
   }
 
-  function generateScript({rowSelector, itemSelector, paginationMode, paginationSelector}) {
+  function generateScript({sectionName, rowSelector, itemSelector, paginationMode, paginationSelector}) {
+    const SECTION = (sectionName || "").trim();
+    if(!SECTION) return "// Provide sectionName (e.g. Exhibitors / Speakers / Sponsors)\n";
     if(!rowSelector || !itemSelector) return "// Provide rowSelector and itemSelector.\n";
-    const mode = paginationMode || "none";
+
+    const mode = paginationMode || "indexPages";
     const pagSel = paginationSelector || "";
 
     return `(async () => {
+  const SECTION = ${JSON.stringify(SECTION)};
+  const MODE = ${JSON.stringify(mode)}; // indexPages | none | fetchPages | nextButton | loadMore
+
   const ROW_SEL = ${JSON.stringify(rowSelector)};
   const ITEM_SEL = ${JSON.stringify(itemSelector)};
-  const MODE = ${JSON.stringify(mode)}; // none | fetchPages | nextButton | loadMore
   const PAGINATION_SEL = ${JSON.stringify(pagSel)};
+
   const MAX_STEPS = 10; // nextButton only
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -154,7 +164,7 @@
     try { return new URL(href, location.origin).toString(); } catch { return href; }
   }
 
-  function scrapeFromDoc(doc) {
+  function scrapeRowsFromDoc(doc){
     const rows = [...doc.querySelectorAll(ROW_SEL)];
     const out = [];
     for (const row of rows) {
@@ -187,23 +197,58 @@
 
   const map = new Map();
 
-  if (MODE === "fetchPages") {
+  // ✅ This is the original proven pagination method
+  if (MODE === "indexPages") {
     const baseUrl = location.origin;
 
-    // Crawl pages: pagination UI may only show 2 links at a time
+    // If PAGINATION_SEL is empty, default to Index links for the section
+    const indexSel = PAGINATION_SEL && PAGINATION_SEL.trim()
+      ? PAGINATION_SEL.trim()
+      : \`a[href*="/\${SECTION}/Index/"]\`;
+
+    const detailSel = \`a[href^="/\${SECTION}/Details/"]\`;
+
+    const indexPages = [...document.querySelectorAll(indexSel)]
+      .map(a => new URL(a.getAttribute("href"), baseUrl).href);
+
+    const uniqueIndexPages = [...new Set(indexPages)];
+    console.log("Index pages found:", uniqueIndexPages.length);
+
+    if (uniqueIndexPages.length === 0) {
+      console.warn("No Index pages found. Try setting PAGINATION_SEL to a[href*=\"/" + SECTION + "/Index/\"]");
+      // Still scrape current page so user gets something
+      const items = scrapeRowsFromDoc(document);
+      for(const it of items) map.set(it.url, it.name);
+    } else {
+      for (const url of uniqueIndexPages) {
+        console.log("Fetching:", url);
+        const res = await fetch(url, { credentials: "include" });
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+
+        const links = [...doc.querySelectorAll(detailSel)];
+        for (const a of links) {
+          const name = (a.textContent || "").trim().replace(/\\s+/g, " ");
+          const href = a.getAttribute("href");
+          if(!name || !href) continue;
+          const abs = new URL(href, baseUrl).href;
+          map.set(abs, name);
+        }
+      }
+    }
+
+  } else if (MODE === "fetchPages") {
+    // Crawl pages by link discovery (fallback mode)
+    const baseUrl = location.origin;
     const queue = [];
     const seen = new Set();
 
     function addUrl(u){
-      if (!u) return;
+      if(!u) return;
       const clean = u.split("#")[0];
-      if (!seen.has(clean)) {
-        seen.add(clean);
-        queue.push(clean);
-      }
+      if(!seen.has(clean)){ seen.add(clean); queue.push(clean); }
     }
 
-    // Seed with current page + any links matching PAGINATION_SEL
     addUrl(location.href);
     [...document.querySelectorAll(PAGINATION_SEL)].forEach(a => {
       const href = a.getAttribute("href");
@@ -213,7 +258,7 @@
 
     console.log("Seed pages:", queue.length);
 
-    while (queue.length) {
+    while(queue.length){
       const url = queue.shift();
       console.log("Fetching:", url);
 
@@ -221,10 +266,9 @@
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
 
-      const items = scrapeFromDoc(doc);
+      const items = scrapeRowsFromDoc(doc);
       for(const it of items) map.set(it.url, it.name);
 
-      // discover more links on this fetched page
       [...doc.querySelectorAll(PAGINATION_SEL)].forEach(a => {
         const href = a.getAttribute("href");
         if(!href) return;
@@ -232,16 +276,14 @@
       });
     }
 
-    console.log("Total pages crawled:", seen.size);
-
   } else {
-    // In-page pagination only (won't work if clicking navigates away)
+    // In-page only (AJAX / load more)
     let lastSize = 0;
 
-    for (let step=1; step<=MAX_STEPS; step++){
+    for(let step=1; step<=MAX_STEPS; step++){
       if(MODE==="loadMore") await clickLoadMore();
 
-      const items = scrapeFromDoc(document);
+      const items = scrapeRowsFromDoc(document);
       for(const it of items) map.set(it.url, it.name);
 
       console.log(\`Step \${step} — page items: \${items.length} — total unique: \${map.size}\`);
@@ -272,7 +314,7 @@
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "export.csv";
+  link.download = \`\${SECTION.toLowerCase()}_export.csv\`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -282,12 +324,14 @@
   }
 
   function updateOutput() {
+    const sectionName = document.getElementById("sectionName").value.trim();
     const rowSelector = document.getElementById("rowSelector").value.trim();
     const itemSelector = document.getElementById("itemSelector").value.trim();
     const pagMode = document.getElementById("pagMode").value;
     const pagSelector = document.getElementById("pagSelector").value.trim();
 
     document.getElementById("out").value = generateScript({
+      sectionName,
       rowSelector,
       itemSelector,
       paginationMode: pagMode,
@@ -310,7 +354,7 @@
 
     document.getElementById("bookmarkletCode").value = code;
     document.getElementById("pickHelp").textContent =
-      "On the target site: click the bookmarklet → click item → click pagination. Esc cancels.";
+      "Use on target site: click the bookmarklet → click an item → click any pagination segment. Esc cancels.";
 
     document.getElementById("copyBookmarklet").onclick = async () => {
       try { await navigator.clipboard.writeText(code); setStatus("Copied bookmarklet ✅"); }
@@ -318,18 +362,28 @@
     };
   }
 
+  // UI wiring
   document.getElementById("loadConfig").addEventListener("click", () => {
     const txt = document.getElementById("config").value.trim();
     if(!txt) return setStatus("Paste the JSON config first.", false);
+
     try {
       const cfg = JSON.parse(txt);
+
+      // Fill fields
+      document.getElementById("sectionName").value = cfg.sectionName || cfg.section || "";
       document.getElementById("rowSelector").value = cfg.rowSelector || "";
       document.getElementById("itemSelector").value = cfg.itemSelector || "";
-      document.getElementById("pagMode").value = cfg.pagination?.mode || "none";
-      document.getElementById("pagSelector").value = cfg.pagination?.selector || "";
+      document.getElementById("pagMode").value = (cfg.pagination?.mode || "indexPages");
+      document.getElementById("pagSelector").value = (cfg.pagination?.selector || "");
+
+      // Defaults if missing (good for the event platform you’re using)
+      if(!document.getElementById("rowSelector").value) document.getElementById("rowSelector").value = "li.block-list__item";
+      if(!document.getElementById("itemSelector").value) document.getElementById("itemSelector").value = "strong.block-list__title a";
+
       updateOutput();
       setStatus("Loaded config ✅", true);
-    } catch {
+    } catch (e) {
       setStatus("That doesn’t look like valid JSON.", false);
     }
   });
@@ -339,7 +393,7 @@
     setStatus("Cleared.");
   });
 
-  ["rowSelector","itemSelector","pagMode","pagSelector"].forEach(id=>{
+  ["sectionName","rowSelector","itemSelector","pagMode","pagSelector"].forEach(id=>{
     document.getElementById(id).addEventListener("input", updateOutput);
     document.getElementById(id).addEventListener("change", updateOutput);
   });
@@ -350,6 +404,7 @@
     catch { setStatus("Clipboard blocked—copy manually.", false); }
   });
 
+  // Init
   setBookmarkletCode();
   updateOutput();
 </script>
