@@ -125,153 +125,165 @@
  * - we output JSON: rowSelector, itemSelector, pagMode + pagSelector
  */
 
-(function () {
-  if (window.__PICKER_ACTIVE__) {
-    alert("Picker already running. Press Esc to cancel.");
-    return;
-  }
-  window.__PICKER_ACTIVE__ = true;
-
-  const cssEscape = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-  const stableClasses = (el) => [...(el?.classList || [])].filter(c => c && c.length < 40 && !/[0-9]{4,}/.test(c)).slice(0, 2);
-
-  function selectorFor(el) {
-    if (!el || el.nodeType !== 1) return null;
-    if (el.id) return "#" + cssEscape(el.id);
-    const parts = [];
-    let cur = el;
-    while (cur && cur.nodeType === 1 && cur !== document.body) {
-      let part = cur.tagName.toLowerCase();
-      const cls = stableClasses(cur);
-      if (cls.length) part += "." + cls.map(cssEscape).join(".");
-      parts.unshift(part);
-      const candidate = parts.join(" > ");
-      if (document.querySelectorAll(candidate).length === 1) return candidate;
-      cur = cur.parentElement;
-    }
-    return parts.join(" > ");
-  }
-
-  function findRepeatingRow(el) {
-    let cur = el;
-    for (let i = 0; i < 12 && cur; i++) {
-      const sel = selectorFor(cur);
-      if (!sel) break;
-      const n = document.querySelectorAll(sel).length;
-      if (n >= 2 && n <= 5000) return sel;
-      cur = cur.parentElement;
-    }
-    return null;
-  }
-
-  const overlay = document.createElement("div");
-  overlay.style.cssText = [
-    "position:fixed","inset:0","z-index:2147483647",
-    "background:rgba(0,0,0,.08)","cursor:crosshair",
-    "pointer-events:none"
-  ].join(";");
-  document.body.appendChild(overlay);
-
-  let step = 1;
-  let rowSel = null, itemSel = null, pagSel = null, pagMode = "none";
-
-  const cleanup = () => {
-    ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
-      document.removeEventListener(t, blocker, true)
-    );
-    document.removeEventListener("keydown", onKey, true);
-    document.removeEventListener("pointerup", onPick, true);
-    overlay.remove();
-    window.__PICKER_ACTIVE__ = false;
-  };
-
-  const onKey = (e) => {
-    if (e.key === "Escape") { cleanup(); alert("Picker cancelled."); }
-  };
-
-  // HARD BLOCK: stop navigation + stop site handlers
-  const blocker = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    return false;
-  };
-
-  // We pick on pointerup so we've already blocked pointerdown/mousedown
-  const onPick = async (e) => {
-    blocker(e);
-
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el) return;
-
-    // highlight briefly
-    const prev = el.style.outline;
-    el.style.outline = "3px solid #22c55e";
-    setTimeout(() => { el.style.outline = prev; }, 600);
-
-    if (step === 1) {
-      rowSel = findRepeatingRow(el);
-
-// If it accidentally picked an <a>, climb until you hit something that repeats and is NOT an <a>
-if (rowSel) {
-  let node = el.closest(rowSel);
-  for (let i = 0; i < 8 && node; i++) {
-    if (node.tagName && node.tagName.toLowerCase() !== "a") break;
-    node = node.parentElement;
-  }
-  // If we climbed, try to pick a selector for the new node
-  if (node && node.tagName.toLowerCase() !== "a") {
-    // build a selector and ensure it repeats
-    const sel = selectorFor(node);
-    if (sel) {
-      const n = document.querySelectorAll(sel).length;
-      if (n >= 2 && n <= 5000) rowSel = sel;
-    }
-  }
-}
-
-      const a = el.closest("a[href]") || el;
-      const cls = stableClasses(a);
-      itemSel = cls.length ? (a.tagName.toLowerCase() + "." + cls.map(cssEscape).join(".")) : "a[href]";
-      step = 2;
-      alert("✅ Item selected. Now click pagination (Next / Load more / page segment). Press Esc if none.");
+function makePickerCode() {
+  return `(function () {
+    if (window.__PICKER_ACTIVE__) {
+      alert("Picker already running. Press Esc to cancel.");
       return;
     }
+    window.__PICKER_ACTIVE__ = true;
 
-    const pagEl = el.closest("a[href], button, [role='button']") || el;
-    pagSel = selectorFor(pagEl);
-    const text = (pagEl.textContent || "").trim().toLowerCase();
-    pagMode = (text.includes("load") || text.includes("more")) ? "loadMore" : "nextButton";
+    const cssEscape = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+    const stableClasses = (el) => [...(el?.classList || [])].filter(c => c && c.length < 40 && !/[0-9]{4,}/.test(c)).slice(0, 2);
 
-    // If segmented pagination exists, this is usually best:
-    if (document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item')) {
-      pagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
-      pagMode = "nextButton";
+    function selectorFor(el) {
+      if (!el || el.nodeType !== 1) return null;
+      if (el.id) return "#" + cssEscape(el.id);
+      const parts = [];
+      let cur = el;
+      while (cur && cur.nodeType === 1 && cur !== document.body) {
+        let part = cur.tagName.toLowerCase();
+        const cls = stableClasses(cur);
+        if (cls.length) part += "." + cls.map(cssEscape).join(".");
+        parts.unshift(part);
+        const candidate = parts.join(" > ");
+        if (document.querySelectorAll(candidate).length === 1) return candidate;
+        cur = cur.parentElement;
+      }
+      return parts.join(" > ");
     }
 
-    const cfg = { rowSelector: rowSel, itemSelector: itemSel, pagination: { mode: pagMode, selector: pagSel } };
-    const json = JSON.stringify(cfg, null, 2);
-
-    cleanup();
-
-    try {
-      await navigator.clipboard.writeText(json);
-      alert("✅ Config copied to clipboard!\n\nPaste into your builder:\n\n" + json);
-    } catch {
-      prompt("Copy this JSON config:", json);
+    function findRepeatingRow(el) {
+      let cur = el;
+      for (let i = 0; i < 14 && cur; i++) {
+        const sel = selectorFor(cur);
+        if (!sel) break;
+        const n = document.querySelectorAll(sel).length;
+        if (n >= 2 && n <= 5000) return sel;
+        cur = cur.parentElement;
+      }
+      return null;
     }
-  };
 
-  // Install blockers (capture + passive:false so preventDefault works)
-  ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
-    document.addEventListener(t, blocker, { capture: true, passive: false })
-  );
-  document.addEventListener("pointerup", onPick, { capture: true, passive: false });
-  document.addEventListener("keydown", onKey, true);
+    const overlay = document.createElement("div");
+    overlay.style.cssText = [
+      "position:fixed","inset:0","z-index:2147483647",
+      "background:rgba(0,0,0,.08)","cursor:crosshair",
+      "pointer-events:none"
+    ].join(";");
+    document.body.appendChild(overlay);
 
-  alert("🟢 Picker ON.\nClicks will NOT navigate.\nClick an item name/link first.\n(Esc cancels)");
-})();
+    let step = 1;
+    let rowSel = null, itemSel = null, pagSel = null, pagMode = "none";
 
+    const cleanup = () => {
+      ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
+        document.removeEventListener(t, blocker, true)
+      );
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerup", onPick, true);
+      overlay.remove();
+      window.__PICKER_ACTIVE__ = false;
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Escape") { cleanup(); alert("Picker cancelled."); }
+    };
+
+    const blocker = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return false;
+    };
+
+    // ✅ normalize row selector if it accidentally picks an <a>
+    function normalizeRowFromElement(el, rowSelGuess){
+      // If rowSelGuess points to an <a> (very common), climb to LI/DIV container and prefer li.block-list__item if present.
+      const li = el.closest("li.block-list__item");
+      if (li) return "li.block-list__item";
+
+      const maybe = el.closest(rowSelGuess);
+      if(maybe && maybe.tagName && maybe.tagName.toLowerCase() === "a"){
+        let n = maybe.parentElement;
+        for(let i=0;i<10 && n;i++){
+          if(n.tagName && n.tagName.toLowerCase() !== "a"){
+            const sel = selectorFor(n);
+            if(sel){
+              const count = document.querySelectorAll(sel).length;
+              if(count >= 2 && count <= 5000) return sel;
+            }
+          }
+          n = n.parentElement;
+        }
+      }
+      return rowSelGuess;
+    }
+
+    const onPick = async (e) => {
+      blocker(e);
+
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (!el) return;
+
+      const prev = el.style.outline;
+      el.style.outline = "3px solid #22c55e";
+      setTimeout(() => { el.style.outline = prev; }, 600);
+
+      if (step === 1) {
+        let guess = findRepeatingRow(el);
+        rowSel = normalizeRowFromElement(el, guess);
+
+        // ✅ prefer a title-like link within the row if possible
+        const rowEl = rowSel ? el.closest(rowSel) : null;
+        const preferred =
+          rowEl?.querySelector("strong.block-list__title a[href]") ||
+          rowEl?.querySelector("strong a[href]") ||
+          rowEl?.querySelector("[class*='title'] a[href]") ||
+          el.closest("a[href]") ||
+          el;
+
+        itemSel = "strong.block-list__title a"; // strong default for this event platform
+
+        step = 2;
+        alert("✅ Item selected. Now click pagination (Next / Load more / page segment). Press Esc if none.");
+        return;
+      }
+
+      const pagEl = el.closest("a[href], button, [role='button']") || el;
+      const text = (pagEl.textContent || "").trim().toLowerCase();
+      pagMode = (text.includes("load") || text.includes("more")) ? "loadMore" : "nextButton";
+
+      // segmented pagination best-practice
+      if (document.querySelector('nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item')) {
+        pagSel = 'nav.pagination a.pagination__item[aria-current="true"] + a.pagination__item';
+        pagMode = "nextButton";
+      } else {
+        pagSel = selectorFor(pagEl);
+      }
+
+      const cfg = { rowSelector: rowSel, itemSelector: itemSel, pagination: { mode: pagMode, selector: pagSel } };
+      const json = JSON.stringify(cfg, null, 2);
+
+      cleanup();
+
+      try {
+        await navigator.clipboard.writeText(json);
+        alert("✅ Config copied to clipboard!\\n\\nPaste into your builder:\\n\\n" + json);
+      } catch {
+        prompt("Copy this JSON config:", json);
+      }
+    };
+
+    ["pointerdown","mousedown","click","auxclick","touchstart"].forEach(t =>
+      document.addEventListener(t, blocker, { capture: true, passive: false })
+    );
+    document.addEventListener("pointerup", onPick, { capture: true, passive: false });
+    document.addEventListener("keydown", onKey, true);
+
+    alert("🟢 Picker ON. Click an item name/link first. (Esc cancels)");
+  })();`;
+}
 
 function setStatus(msg, ok=true){
   const s=document.getElementById("status");
@@ -303,12 +315,13 @@ function generateScript({rowSelector, itemSelector, paginationMode, paginationSe
   function scrapePage() {
     const rows = [...document.querySelectorAll(ROW_SEL)];
     const out = [];
-    for (const row of rows) {
-      const a = row.querySelector(ITEM_SEL);
-      const name = (a?.textContent || "").trim().replace(/\\s+/g, " ") || null;
-      const url = absUrl(a?.getAttribute("href"));
-      if (name && url) out.push({ name, url });
-    }
+for (const row of rows) {
+  const a = (row.matches && row.matches(ITEM_SEL)) ? row : row.querySelector(ITEM_SEL);
+  const name = (a?.textContent || "").trim().replace(/\s+/g, " ") || null;
+  const url = absUrl(a?.getAttribute("href"));
+  if (name && url) out.push({ name, url });
+}
+
     return out;
   }
 
@@ -394,9 +407,9 @@ function updateOutput() {
 
 function setBookmarkletLink(){
   const raw = makePickerCode();
-  const href = "javascript:" + encodeURIComponent(raw).replace(/%20/g, " ");
+  // ✅ no encodeURIComponent — it breaks bookmarklets
   const a = document.getElementById("bookmarklet");
-  a.href = href;
+  a.href = "javascript:" + raw;
   document.getElementById("pickHelp").textContent =
     "Drag the ‘Pick selectors’ pill to your bookmarks bar. Then use it on any site.";
 }
